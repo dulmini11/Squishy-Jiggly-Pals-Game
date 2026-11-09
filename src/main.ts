@@ -4,7 +4,7 @@ import { fx } from './fx.ts'
 import { createQuest, type RoundResult } from './quest.ts'
 import { BASKETS, TRACKS, isUnlocked, loadBasket, loadStars, saveBasket, saveStars, type Basket } from './levels.ts'
 import { haptics } from './haptics.ts'
-import { enableTilt, isTouchDevice, recenterTilt, takePush, tilt } from './tilt.ts'
+import { enableTilt, isTouchDevice, takePush, tilt } from './tilt.ts'
 import { camera } from './camera.ts'
 import './jelly.css'
 
@@ -336,18 +336,17 @@ function collide(a: Body, b: Body) {
 function step() {
   const alpha = soft ? STIFF.soft : STIFF.hard
   const damp = soft ? DAMP.soft : DAMP.hard
-  // Gravity on: fall "down" (or wherever the phone points down).
-  // Gravity off on a phone: tilting slides the jellies, moving the phone sloshes them.
+  // On a phone, jellies always fall toward wherever the phone points down
+  // (turn it to the left and they all go left). The Gravity button makes it stronger,
+  // and on a computer the Gravity button makes them fall straight down.
   let gx = 0
   let gy = 0
-  if (gravity) {
-    const g = 0.45 * U
-    gx = tilt.active ? tilt.x * g : 0
-    gy = tilt.active ? tilt.y * g : g
-  } else if (tilt.active && screen !== 'levels') {
-    const g = 0.32 * U
-    gx = tilt.rx * g
-    gy = tilt.ry * g
+  if (tilt.active && screen !== 'levels') {
+    const g = (gravity ? 0.45 : 0.32) * U
+    gx = tilt.x * g
+    gy = tilt.y * g
+  } else if (gravity) {
+    gy = 0.45 * U
   }
   const [pushX, pushY] = takePush()
   const moved = pushX !== 0 || pushY !== 0
@@ -1103,7 +1102,7 @@ function updateStats() {
 function setMode(m: Mode) {
   mode = m
   document.body.dataset.mode = m
-  hint.textContent = m === 'play' && isTouchDevice() ? 'PLAY · Tilt the phone · Drag to wobble · Double-tap to eat' : HINTS[m]
+  hint.textContent = m === 'play' && isTouchDevice() ? 'PLAY · Turn the phone · Drag to wobble · Double-tap to eat' : HINTS[m]
   document.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach((btn) => btn.classList.toggle('on', btn.dataset.mode === m))
   canvas.classList.remove('can-grab')
 }
@@ -1189,7 +1188,6 @@ function showScreen(s: Screen) {
   screen = s
   document.body.dataset.screen = s
   requestAnimationFrame(measureFloor)
-  if (s === 'game') recenterTilt()
   document.getElementById('home')!.classList.toggle('hidden', s !== 'home')
   document.getElementById('levels')!.classList.toggle('hidden', s !== 'levels')
   hideModal()

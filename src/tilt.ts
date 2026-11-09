@@ -1,21 +1,17 @@
 // Phone motion: the jellies move with the phone.
 //
-// - Tilt (orientation sensor): tilt the phone and the jellies slide that way.
-//   `rx / ry` is the tilt compared with how the player normally holds the phone,
-//   so just holding it doesn't make everything slide. With Gravity on, `x / y`
-//   is the real "down" direction instead.
+// - Real gravity (orientation sensor): turn or tilt the phone to a side and
+//   every jelly falls to that side. Lying flat on a table, they stay put.
+//   `x / y` is the real "down" direction on the screen.
 // - Movement (motion sensor): move or shake the phone quickly and the jellies
 //   slosh the other way, like jelly in a box.
 //
 // iPhones ask the player for permission the first time (from a tap).
 
 export const tilt = {
-  /** Real gravity direction on screen (-1..1). Straight down until the sensor speaks. */
+  /** Real gravity on the screen (-1..1 each). Its length is 1 when the phone is upright, ~0 when flat. */
   x: 0,
   y: 1,
-  /** Tilt compared with the player's usual grip (-1..1): slides the jellies. */
-  rx: 0,
-  ry: 0,
   /** True once the orientation sensor has sent real readings. */
   active: false,
   /** Push from moving the phone, collected until the physics uses it. */
@@ -24,9 +20,6 @@ export const tilt = {
 }
 
 let listening = false
-let baseX = 0
-let baseY = 0
-let haveBase = false
 
 type PermissionEvent = { requestPermission?: () => Promise<'granted' | 'denied'> }
 
@@ -61,11 +54,6 @@ export async function enableTilt(): Promise<boolean> {
   return okOrientation || okMotion
 }
 
-/** Forget the "usual grip" so the current position becomes level again. */
-export function recenterTilt() {
-  haveBase = false
-}
-
 function screenAngle(): number {
   const a = screen.orientation?.angle
   if (typeof a === 'number') return ((a % 360) + 360) % 360
@@ -92,28 +80,14 @@ const clamp = (v: number) => Math.max(-1, Math.min(1, v))
 function onOrientation(e: DeviceOrientationEvent) {
   if (e.beta == null || e.gamma == null) return
   const rad = Math.PI / 180
-  const [x, y] = toScreen(Math.sin(e.gamma * rad), Math.sin(e.beta * rad))
-
-  // real gravity direction (used when the Gravity button is on)
-  tilt.x += (clamp(x) - tilt.x) * 0.25
-  tilt.y += (clamp(y) - tilt.y) * 0.25
-
-  // tilt compared with the usual grip; the grip slowly adapts if the player changes posture
-  if (!haveBase) {
-    baseX = x
-    baseY = y
-    haveBase = true
-  } else {
-    baseX += (x - baseX) * 0.004
-    baseY += (y - baseY) * 0.004
-  }
-  const dead = 0.04 // ignore tiny hand wobble
-  const dx = x - baseX
-  const dy = y - baseY
-  const rx = Math.abs(dx) < dead ? 0 : clamp((dx - Math.sign(dx) * dead) * 2.2)
-  const ry = Math.abs(dy) < dead ? 0 : clamp((dy - Math.sign(dy) * dead) * 2.2)
-  tilt.rx += (rx - tilt.rx) * 0.3
-  tilt.ry += (ry - tilt.ry) * 0.3
+  const b = e.beta * rad // tipping forward/back
+  const g = e.gamma * rad // tipping left/right
+  // where "down" points across the phone's screen (phone frame: x right, y down)
+  const [x, y] = toScreen(Math.sin(g) * Math.cos(b), Math.sin(b))
+  // smooth the sensor so the jellies don't twitch (the very first reading applies at once)
+  const k = tilt.active ? 0.25 : 1
+  tilt.x += (clamp(x) - tilt.x) * k
+  tilt.y += (clamp(y) - tilt.y) * k
   tilt.active = true
 }
 
