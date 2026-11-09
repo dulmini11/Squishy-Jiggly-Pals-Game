@@ -962,3 +962,181 @@ body[data-theme='night'] .lv-card.cleared {
   padding-bottom: 0.1em;
   margin-bottom: -0.06em;
 }
+
+/* ---------- Mobile polish ---------- */
+html,
+body {
+  overscroll-behavior: none; /* no pull-to-refresh or rubber-band scrolling */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none; /* no long-press menu on the jellies */
+}
+button {
+  touch-action: manipulation; /* no double-tap zoom on buttons */
+}
+/* the only things that scroll with a finger */
+.toolbar,
+.chips {
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+}
+.levels {
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* notches and home bars */
+.top {
+  padding-top: max(18px, env(safe-area-inset-top));
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+}
+.bottom {
+  bottom: calc(14px + env(safe-area-inset-bottom));
+}
+.home {
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+}
+
+/* vibration button: phones only */
+.touch-only {
+  display: none;
+}
+body.is-touch .touch-only {
+  display: inline-block;
+}
+#btn-haptics.off {
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+
+/* no hover lift on touch screens (it sticks after a tap) */
+@media (hover: none) {
+  button:hover {
+    transform: none;
+  }
+  button:active {
+    transform: scale(0.92);
+  }
+}
+
+/* phones in portrait */
+@media (max-width: 560px) {
+  .top {
+    gap: 8px;
+    padding-top: max(10px, env(safe-area-inset-top));
+  }
+  .round {
+    width: 36px;
+    height: 36px;
+    font-size: 15px;
+  }
+  .play-btn {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+  .chips {
+    padding-bottom: 6px;
+  }
+  .chips button {
+    padding: 7px 12px;
+    font-size: 13px;
+  }
+  .title {
+    top: 120px;
+    font-size: clamp(44px, 15vw, 80px);
+    opacity: 0.9;
+  }
+  .hint {
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-align: center;
+    padding: 0 16px;
+  }
+  .bottom {
+    gap: 8px;
+  }
+  .toolbar {
+    gap: 6px;
+    padding: 4px 16px;
+    width: 100%;
+  }
+  .toolbar button {
+    padding: 10px 14px;
+    font-size: 14px;
+    min-height: 40px;
+  }
+  .quest {
+    top: calc(118px + env(safe-area-inset-top));
+    width: calc(100vw - 24px);
+  }
+  .q-top {
+    gap: 8px;
+    padding: 6px 6px 6px 12px;
+    font-size: 13px;
+  }
+  .q-task {
+    font-size: 13px;
+    padding: 8px 12px;
+    gap: 6px;
+    max-width: 100%;
+  }
+  .q-label {
+    display: none;
+  }
+  .modal .card {
+    margin: 16px;
+    padding: 24px 22px;
+  }
+  .modal .big {
+    font-size: 56px;
+  }
+  .modal .row {
+    flex-wrap: wrap;
+  }
+  .home-card {
+    padding: 20px 18px 14px;
+  }
+  .home-sub {
+    font-size: 13px;
+  }
+  .level-grid {
+    gap: 10px;
+  }
+  .lv-card {
+    padding: 16px 8px 12px;
+  }
+  .lv-emoji {
+    font-size: 36px;
+  }
+}
+
+/* phones held sideways */
+@media (max-height: 480px) and (orientation: landscape) {
+  .home {
+    align-items: center;
+    padding-top: 12px;
+  }
+  .home-card {
+    max-height: calc(100vh - 24px);
+    overflow-y: auto;
+    touch-action: pan-y;
+  }
+  .badge,
+  .home-sub {
+    display: none;
+  }
+  .home-title {
+    flex-direction: row;
+    gap: 10px;
+    font-size: 40px;
+  }
+  .hint,
+  .blurb {
+    display: none;
+  }
+  .title {
+    display: none;
+  }
+}

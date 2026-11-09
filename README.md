@@ -20,6 +20,7 @@ npm run dev
 - **Gravity** (`G`): jellies fall and pile up. **Shake** (`Space`) bounces them.
 - **Challenge**: a 60-second round of random orders (slice, eat, wobble, grow, shrink, fling).
   Each order you finish adds +5s; finishing orders quickly builds a combo (up to ×5). Your best score is saved.
+- **Mobile ready**: phone vibration on grab/slice/eat/wins (📳 toggle), tilt-the-phone gravity, two-finger pinch to grow or shrink a jelly, notch-safe layout, no accidental zoom or page scrolling.
 - Faces / Tags / View (3 themes) / sound toggles.
 
 Add new fruits in `src/art.ts`, veggies in `src/veggies.ts`, levels in `src/levels.ts`. The round engine is `src/quest.ts`.

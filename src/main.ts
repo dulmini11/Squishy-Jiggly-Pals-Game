@@ -3,6 +3,8 @@ import { sfx } from './sound.ts'
 import { fx } from './fx.ts'
 import { createQuest, type RoundResult } from './quest.ts'
 import { BASKETS, TRACKS, isUnlocked, loadBasket, loadStars, saveBasket, saveStars, type Basket } from './levels.ts'
+import { haptics } from './haptics.ts'
+import { enableTilt, isTouchDevice, tilt } from './tilt.ts'
 import './jelly.css'
 
 // ---------------------------------------------------------------------------
@@ -333,6 +335,10 @@ function collide(a: Body, b: Body) {
 function step() {
   const alpha = soft ? STIFF.soft : STIFF.hard
   const damp = soft ? DAMP.soft : DAMP.hard
+  // gravity points down, or wherever the phone is tilted
+  const gStrength = gravity ? 0.45 * U : 0
+  const gx = tilt.active ? tilt.x * gStrength : 0
+  const gy = tilt.active ? tilt.y * gStrength : gStrength
   for (const b of bodies) {
     // scale spring (pop-in & scale tool)
     const target = baseScale(b.design) * b.k
@@ -353,8 +359,8 @@ function step() {
     for (let i = 0; i < b.n; i++) {
       b.ox[i] = b.px[i]
       b.oy[i] = b.py[i]
-      b.px[i] += b.vx[i] * damp
-      b.py[i] += b.vy[i] * damp + (gravity ? 0.45 * U : 0)
+      b.px[i] += b.vx[i] * damp + gx
+      b.py[i] += b.vy[i] * damp + gy
     }
   }
 
@@ -375,11 +381,16 @@ function step() {
         collide(bodies[j], bodies[i])
       }
     const m = 3
-    const floor = H - (gravity ? 92 : m)
+    const floor = gravity ? floorY : H - m
     for (const b of bodies)
       for (let i = 0; i < b.n; i++) {
-        if (b.px[i] < m) b.px[i] = m
-        else if (b.px[i] > W - m) b.px[i] = W - m
+        if (b.px[i] < m) {
+          b.px[i] = m
+          if (gravity) b.py[i] += (b.oy[i] - b.py[i]) * 0.3 // wall friction when tilted
+        } else if (b.px[i] > W - m) {
+          b.px[i] = W - m
+          if (gravity) b.py[i] += (b.oy[i] - b.py[i]) * 0.3
+        }
         if (b.py[i] < m) b.py[i] = m
         else if (b.py[i] > floor) {
           b.py[i] = floor
@@ -837,6 +848,15 @@ function resize() {
   canvas.style.width = W + 'px'
   canvas.style.height = H + 'px'
   U = Math.max(0.5, Math.min(1.25, Math.min(W, H * 1.4) / 1100))
+  measureFloor()
+}
+
+/** With gravity on, jellies rest just above the bottom toolbar (whatever its height on this screen). */
+let floorY = 0
+function measureFloor() {
+  const bar = document.querySelector<HTMLElement>('.toolbar')
+  const top = bar?.getBoundingClientRect().top ?? 0
+  floorY = top > H * 0.5 && top < H ? top - 6 : H - 3
 }
 
 // ---------------------------------------------------------------------------
@@ -855,13 +875,71 @@ function scaleBody(b: Body, up: boolean) {
   if (!up && b.k <= 0.62) quest.event('shrink', b)
 }
 
+function capture(id: number) {
+  try {
+    canvas.setPointerCapture(id)
+  } catch {
+    /* pointer already gone */
+  }
+}
+
+// ---------- two-finger pinch to grow / shrink a jelly ----------
+const fingers = new Map<number, { x: number; y: number }>()
+let pinch: { body: Body; startDist: number; startK: number; step: number; grew: boolean; shrank: boolean } | null = null
+
+function fingerDistance() {
+  const [a, b] = [...fingers.values()]
+  return Math.hypot(a.x - b.x, a.y - b.y)
+}
+
+function startPinch(): boolean {
+  if (fingers.size !== 2 || mode === 'knife') return false
+  const [a, b] = [...fingers.values()]
+  const body = grab?.body ?? pick(a.x, a.y) ?? pick(b.x, b.y) ?? pick((a.x + b.x) / 2, (a.y + b.y) / 2)
+  if (!body) return false
+  grab = null
+  canvas.classList.remove('grabbing')
+  pinch = { body, startDist: Math.max(20, fingerDistance()), startK: body.k, step: Math.round(body.k * 5), grew: false, shrank: false }
+  body.surprise = 20
+  haptics.grab()
+  return true
+}
+
+function movePinch() {
+  if (!pinch || fingers.size < 2 || !bodies.includes(pinch.body)) return
+  const b = pinch.body
+  const k = Math.max(0.45, Math.min(2, (pinch.startK * fingerDistance()) / pinch.startDist))
+  const up = k > b.k
+  b.k = k
+  // a little click + buzz each time the size passes a step
+  const step = Math.round(k * 5)
+  if (step !== pinch.step) {
+    pinch.step = step
+    sfx.scale(up)
+  }
+  if (k >= 1.7 && !pinch.grew) {
+    pinch.grew = true
+    quest.event('grow', b)
+  }
+  if (k <= 0.62 && !pinch.shrank) {
+    pinch.shrank = true
+    quest.event('shrink', b)
+  }
+}
+
 canvas.addEventListener('pointerdown', (e) => {
   sfx.unlock()
+  fingers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+  if (fingers.size >= 2) {
+    capture(e.pointerId)
+    startPinch()
+    return
+  }
   pointer.x = e.clientX
   pointer.y = e.clientY
   pointer.down = true
   pointer.id = e.pointerId
-  canvas.setPointerCapture(e.pointerId)
+  capture(e.pointerId)
 
   if (mode === 'knife') {
     trail = [{ x: e.clientX, y: e.clientY, t: performance.now() }]
@@ -904,6 +982,12 @@ canvas.addEventListener('pointerdown', (e) => {
 })
 
 canvas.addEventListener('pointermove', (e) => {
+  if (fingers.has(e.pointerId)) fingers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+  if (pinch) {
+    movePinch()
+    return
+  }
+  if (e.pointerId !== pointer.id && pointer.down) return
   const px = pointer.x, py = pointer.y
   pointer.x = e.clientX
   pointer.y = e.clientY
@@ -915,6 +999,17 @@ canvas.addEventListener('pointermove', (e) => {
 })
 
 function endPointer(e: PointerEvent) {
+  fingers.delete(e.pointerId)
+  if (pinch) {
+    // lifting either finger ends the pinch; the jelly wobbles at its new size
+    if (fingers.size < 2) {
+      pinch.body.sVel += 0.02 * U
+      pinch = null
+      pointer.down = false
+      grab = null
+    }
+    return
+  }
   if (e.pointerId !== pointer.id) return
   pointer.down = false
   if (grab) {
@@ -1009,6 +1104,13 @@ document.getElementById('btn-reset')!.onclick = () => {
 function setGravity(v: boolean) {
   gravity = v
   document.getElementById('btn-gravity')!.classList.toggle('on', v)
+  measureFloor()
+  // on phones, gravity follows how the phone is tilted
+  if (v && isTouchDevice() && !tilt.active) {
+    void enableTilt().then((ok) => {
+      if (ok) fx.popup(W / 2, H * 0.35, 'Tilt your phone! 📱', '#ff5f9c', 24)
+    })
+  }
 }
 document.getElementById('btn-gravity')!.onclick = () => {
   setGravity(!gravity)
@@ -1041,6 +1143,7 @@ let lastHop = 0
 function showScreen(s: Screen) {
   screen = s
   document.body.dataset.screen = s
+  requestAnimationFrame(measureFloor)
   document.getElementById('home')!.classList.toggle('hidden', s !== 'home')
   document.getElementById('levels')!.classList.toggle('hidden', s !== 'levels')
   hideModal()
@@ -1232,6 +1335,19 @@ document.getElementById('btn-view')!.onclick = () => {
   themeIdx = (themeIdx + 1) % THEMES.length
   document.body.dataset.theme = THEMES[themeIdx]
 }
+// vibration on/off (only shown on touch devices)
+const hapticsBtn = document.getElementById('btn-haptics')!
+const showHaptics = () => {
+  hapticsBtn.classList.toggle('off', !haptics.enabled)
+  hapticsBtn.title = haptics.enabled ? 'Vibration on' : 'Vibration off'
+}
+hapticsBtn.onclick = () => {
+  haptics.setEnabled(!haptics.enabled)
+  showHaptics()
+}
+showHaptics()
+if (isTouchDevice()) document.body.classList.add('is-touch')
+
 const soundBtn = document.getElementById('btn-sound')!
 soundBtn.onclick = () => {
   sfx.unlock()

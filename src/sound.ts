@@ -1,4 +1,6 @@
 // Tiny synthesized sound kit — no audio files needed.
+// Each effect also triggers a matching phone vibration.
+import { haptics } from './haptics.ts'
 let ac: AudioContext | null = null
 
 function ctx(): AudioContext | null {
@@ -31,9 +33,11 @@ export const sfx = {
     ctx()
   },
   pop() {
+    haptics.pop()
     tone(420 + Math.random() * 200, 980, 0.09, 'triangle', 0.12)
   },
   grab() {
+    haptics.grab()
     tone(260, 560, 0.1, 'sine', 0.16)
   },
   wobble() {
@@ -60,6 +64,7 @@ export const sfx = {
     lfo.stop(t + 0.5)
   },
   slice() {
+    haptics.slice()
     const a = ctx()
     if (!a) return
     const t = a.currentTime
@@ -79,9 +84,11 @@ export const sfx = {
     tone(900, 320, 0.14, 'sine', 0.12, 0.02)
   },
   scale(up: boolean) {
+    haptics.tap()
     tone(up ? 400 : 700, up ? 820 : 330, 0.12, 'triangle', 0.12)
   },
   eat() {
+    haptics.eat()
     const a = ctx()
     if (!a) return
     for (let k = 0; k < 3; k++) {
@@ -103,25 +110,31 @@ export const sfx = {
     tone(500, 1100, 0.12, 'sine', 0.1, 0.22)
   },
   whoosh() {
+    haptics.fling()
     tone(900, 200, 0.25, 'sine', 0.08)
   },
   success() {
+    haptics.success()
     ;[523, 659, 784, 1047].forEach((f, i) => tone(f, f * 1.01, 0.18, 'triangle', 0.12, i * 0.07))
   },
   tick() {
+    haptics.tick()
     tone(1200, 1150, 0.05, 'square', 0.04)
   },
   start() {
     ;[392, 523, 659].forEach((f, i) => tone(f, f, 0.14, 'triangle', 0.12, i * 0.12))
   },
   win() {
+    haptics.win()
     ;[523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, f, 0.22, 'triangle', 0.13, i * 0.09))
     tone(1568, 1568, 0.5, 'sine', 0.08, 0.5)
   },
   over() {
+    haptics.lose()
     ;[659, 523, 440, 330].forEach((f, i) => tone(f, f * 0.98, 0.22, 'triangle', 0.12, i * 0.14))
   },
   shake() {
+    haptics.shake()
     for (let i = 0; i < 5; i++) tone(200 + Math.random() * 500, 120 + Math.random() * 300, 0.18, 'sine', 0.08, i * 0.04)
   },
 }
