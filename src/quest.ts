@@ -194,8 +194,8 @@ export function createQuest(api: QuestApi) {
       bestKey = `${BEST_KEY}-${key}`
       best = Number(localStorage.getItem(bestKey) || 0)
     },
-    end: () => {
-      if (active) finishRound(false)
+    end: (won = false) => {
+      if (active) finishRound(won)
     },
     bestScore: () => best,
 

@@ -2,10 +2,32 @@ import { CATEGORY_COLORS, designById, designsFor, resample, type Category, type 
 import { sfx } from './sound.ts'
 import { fx } from './fx.ts'
 import { createQuest, type RoundResult } from './quest.ts'
-import { BASKETS, TRACKS, isUnlocked, loadBasket, loadStars, saveBasket, saveStars, type Basket } from './levels.ts'
+import { BASKETS, TRACKS, TWIST_INFO, type Place, type Twist, loadBasket, loadStars, saveBasket, saveStars, type Basket } from './levels.ts'
 import { haptics } from './haptics.ts'
-import { enableTilt, isTouchDevice, takePush, tilt } from './tilt.ts'
 import { camera } from './camera.ts'
+import { BACKGROUNDS, JELLY_EMOJI, bgById, hatById, knifeById } from './catalog.ts'
+import { BADGES } from './badges.ts'
+import { mmss, renderBadges, renderMap, renderShop, renderStatus, toast } from './menus.ts'
+import {
+  MAX_HEARTS,
+  UNLOCK_AT,
+  addCoins,
+  addXp,
+  best,
+  bump,
+  earnBadge,
+  equip,
+  isUnlockedJelly,
+  loseHeart,
+  nextHeartIn,
+  onProgress,
+  recordSlice,
+  refillHearts,
+  refreshHearts,
+  save,
+  spendCoins,
+  unlockJelly,
+} from './progress.ts'
 import './jelly.css'
 
 // ---------------------------------------------------------------------------
@@ -61,9 +83,10 @@ let soft = true
 let showTags = false
 let showFaces = true
 let gravity = false
+/** The current level's special rule (none in Free Play / Rush). */
+let twist: Twist = 'none'
 let lastTap: { body: Body; t: number } | null = null
-let themeIdx = 0
-const THEMES = ['milk', 'mint', 'night'] as const
+const isDark = () => document.body.dataset.theme === 'night'
 const stats = { wobbles: 0, slices: 0, eaten: 0 }
 
 const pointer = { x: 0, y: 0, down: false, id: -1 }
@@ -176,7 +199,8 @@ function resetScene(pool?: string[]) {
   const count = W < 700 ? 7 : 11
   const order: string[] = []
   for (let i = 0; i < count; i++) {
-    const src = pool ?? BASKETS[basket].scene
+    const unlockedScene = BASKETS[basket].scene.filter((id) => isUnlockedJelly(id))
+    const src = pool ?? (unlockedScene.length ? unlockedScene : myDesigns().map((d) => d.id))
     order.push(src[i % src.length])
   }
   order.forEach((id, i) => {
@@ -335,21 +359,13 @@ function collide(a: Body, b: Body) {
 
 function step() {
   const alpha = soft ? STIFF.soft : STIFF.hard
-  const damp = soft ? DAMP.soft : DAMP.hard
-  // On a phone, jellies always fall toward wherever the phone points down
-  // (turn it to the left and they all go left). The Gravity button makes it stronger,
-  // and on a computer the Gravity button makes them fall straight down.
+  // ice levels are slippery: jellies keep sliding for longer
+  const damp = twist === 'ice' ? 0.992 : soft ? DAMP.soft : DAMP.hard
+  // Gravity button pulls down; level twists add their own push
   let gx = 0
-  let gy = 0
-  if (tilt.active && screen !== 'levels') {
-    const g = (gravity ? 0.45 : 0.32) * U
-    gx = tilt.x * g
-    gy = tilt.y * g
-  } else if (gravity) {
-    gy = 0.45 * U
-  }
-  const [pushX, pushY] = takePush()
-  const moved = pushX !== 0 || pushY !== 0
+  let gy = gravity ? 0.45 * U : 0
+  if (twist === 'bubbles') gy = -0.2 * U // everything floats up
+  if (twist === 'wind') gx = Math.sin(performance.now() / 1500) * 0.26 * U // a breeze that swings left and right
   for (const b of bodies) {
     // scale spring (pop-in & scale tool)
     const target = baseScale(b.design) * b.k
@@ -372,12 +388,6 @@ function step() {
       b.oy[i] = b.py[i]
       b.px[i] += b.vx[i] * damp + gx
       b.py[i] += b.vy[i] * damp + gy
-      if (moved) {
-        // each point gets a slightly different push so the jelly wobbles as it sloshes
-        const jig = 1 + 0.35 * Math.sin(i * 1.7 + b.n)
-        b.px[i] += pushX * U * jig
-        b.py[i] += pushY * U * jig
-      }
     }
   }
 
@@ -398,13 +408,13 @@ function step() {
         collide(bodies[j], bodies[i])
       }
     const m = 3
-    const sliding = gravity || tilt.active
-    const floor = sliding ? floorY : H - m
+    const sliding = gravity || twist === 'wind'
+    const floor = gravity ? floorY : H - m
     for (const b of bodies)
       for (let i = 0; i < b.n; i++) {
         if (b.px[i] < m) {
           b.px[i] = m
-          if (sliding) b.py[i] += (b.oy[i] - b.py[i]) * 0.3 // wall friction when tilted
+          if (sliding) b.py[i] += (b.oy[i] - b.py[i]) * 0.3 // wall friction
         } else if (b.px[i] > W - m) {
           b.px[i] = W - m
           if (sliding) b.py[i] += (b.oy[i] - b.py[i]) * 0.3
@@ -553,6 +563,8 @@ function slice(b: Body, h1: Hit, h2: Hit, dirX: number, dirY: number): boolean {
   updateStats()
   sfx.slice()
   quest.event('slice', b)
+  recordSlice(b.design.id)
+  gainXp(1)
   if (mode === 'knife' && pointer.down) {
     strokeCuts++
     if (strokeCuts >= 2) multiCut(strokeCuts, midX, midY)
@@ -567,6 +579,9 @@ let strokeCuts = 0
 const CUT_COLORS = ['#ff3d8b', '#ff8a3d', '#7a46e0', '#1fae6a']
 
 function multiCut(n: number, x: number, y: number) {
+  best('bestCut', n)
+  addCoins(5 * (n - 1))
+  fx.popup(x, y - 10, `+🪙 ${5 * (n - 1)}`, '#e0a000', 18)
   const word = n === 2 ? 'DOUBLE CUT!' : n === 3 ? 'TRIPLE CUT!' : `MEGA CUT ×${n}!`
   const bonus = 50 * (n - 1)
   const scored = quest.bonus(bonus)
@@ -589,6 +604,8 @@ function eat(b: Body) {
   updateStats()
   sfx.eat()
   quest.event('eat', b)
+  bump('eaten')
+  gainXp(2)
 }
 
 function pick1<T>(arr: T[]): T {
@@ -703,7 +720,26 @@ function drawBody(b: Body, night: boolean) {
   ctx.restore()
 
   if (showFaces && b.whole) drawFace(b)
+  if (b.whole) drawHat(b)
   if (showTags) drawTag(b)
+}
+
+/** The hat you picked in the shop sits on top of every whole jelly. */
+function drawHat(b: Body) {
+  const hat = hatById(save.equipped.hat)
+  if (!hat.draw) return
+  // the top of the jelly's own shape (in art space), above its face
+  let top = Infinity
+  for (let i = 0; i < b.n; i++) top = Math.min(top, b.ry[i])
+  const fx0 = b.design.face?.x ?? b.rcx
+  const size = 100 * b.s * (b.design.face?.scale ?? 1) * 0.62
+  ctx.save()
+  ctx.translate(b.cx, b.cy)
+  ctx.transform(b.m[0], b.m[2], b.m[1], b.m[3], 0, 0)
+  ctx.translate((fx0 - b.rcx) * b.s, (top - b.rcy) * b.s + size * 0.18)
+  ctx.rotate(-0.12)
+  hat.draw(ctx, size)
+  ctx.restore()
 }
 
 function bodySpeed(b: Body) {
@@ -833,17 +869,25 @@ function drawTrail() {
   ctx.save()
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
+  const knife = knifeById(save.equipped.knife)
   for (let i = 1; i < trail.length; i++) {
     const a = trail[i - 1], b = trail[i]
     const life = 1 - (now - b.t) / 180
-    ctx.strokeStyle = `rgba(255,255,255,${life})`
-    ctx.shadowColor = 'rgba(120,200,255,0.9)'
+    ctx.globalAlpha = life
+    ctx.strokeStyle = knife.colors[i % knife.colors.length]
+    ctx.shadowColor = knife.glow
     ctx.shadowBlur = 14
-    ctx.lineWidth = 2 + life * 7
+    ctx.lineWidth = 2 + life * 8
     ctx.beginPath()
     ctx.moveTo(a.x, a.y)
     ctx.lineTo(b.x, b.y)
     ctx.stroke()
+    if (knife.sparkle && i % 3 === 0) {
+      ctx.fillStyle = knife.sparkle
+      ctx.beginPath()
+      ctx.arc(b.x + Math.sin(b.t) * 8, b.y + Math.cos(b.t) * 8, 1.5 + life * 2.5, 0, Math.PI * 2)
+      ctx.fill()
+    }
   }
   ctx.restore()
 }
@@ -870,14 +914,16 @@ function frame(now: number) {
 
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0)
   ctx.clearRect(0, 0, W, H)
-  const night = THEMES[themeIdx] === 'night'
+  const night = isDark()
+  drawDecor(realMs)
   ctx.save()
-  camera.apply(ctx, W, H) // screen shake + slow-motion zoom
+  camera.apply(ctx, W, H) // slow-motion zoom
   fx.drawBelow(ctx)
   for (const b of bodies) drawBody(b, night)
   fx.drawAbove(ctx)
   ctx.restore()
   camera.overlay(ctx, W, H, night)
+  drawNight()
   drawTrail()
   requestAnimationFrame(frame)
 }
@@ -1022,6 +1068,7 @@ canvas.addEventListener('pointerdown', (e) => {
   stats.wobbles++
   updateStats()
   sfx.grab()
+  bump('wobbles')
   quest.event('wobble', b)
 })
 
@@ -1060,6 +1107,7 @@ function endPointer(e: PointerEvent) {
     const b = grab.body
     if (bodySpeed(b) > 9) {
       sfx.whoosh()
+      bump('flings')
       b.surprise = 60
       if (!quest.active) fx.popup(b.cx, b.cy - 30, 'whoosh!', b.design.juice, 22)
       quest.event('fling', b)
@@ -1102,7 +1150,7 @@ function updateStats() {
 function setMode(m: Mode) {
   mode = m
   document.body.dataset.mode = m
-  hint.textContent = m === 'play' && isTouchDevice() ? 'PLAY · Turn the phone · Drag to wobble · Double-tap to eat' : HINTS[m]
+  hint.textContent = HINTS[m]
   document.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach((btn) => btn.classList.toggle('on', btn.dataset.mode === m))
   canvas.classList.remove('can-grab')
 }
@@ -1146,12 +1194,6 @@ function setGravity(v: boolean) {
   gravity = v
   document.getElementById('btn-gravity')!.classList.toggle('on', v)
   measureFloor()
-  // on phones, gravity follows how the phone is tilted
-  if (v && isTouchDevice() && !tilt.active) {
-    void enableTilt().then((ok) => {
-      if (ok) fx.popup(W / 2, H * 0.35, 'Tilt your phone! 📱', '#ff5f9c', 24)
-    })
-  }
 }
 document.getElementById('btn-gravity')!.onclick = () => {
   setGravity(!gravity)
@@ -1173,26 +1215,38 @@ const quest = createQuest({
   finish: showResult,
   onOrder: (combo) => {
     if (combo >= 3) camera.slowmo(0.4, 400)
+    bump('orders')
+    best('bestCombo', combo)
+    gainXp(8)
   },
 })
 
 // ---------------------------------------------------------------------------
-// Screens: home (landing) · levels (map) · game
+// Screens: home (landing) · levels (adventure map) · shop · badges · game
 // ---------------------------------------------------------------------------
-type Screen = 'home' | 'levels' | 'game'
+type Screen = 'home' | 'levels' | 'shop' | 'badges' | 'game'
 let screen: Screen = 'home'
 let currentLevel: number | null = null
 let lastHop = 0
+let screenBefore: Screen = 'home' // where Shop / Badges go back to
 
 function showScreen(s: Screen) {
+  if ((s === 'shop' || s === 'badges') && screen !== 'shop' && screen !== 'badges') screenBefore = screen
   screen = s
   document.body.dataset.screen = s
   requestAnimationFrame(measureFloor)
-  document.getElementById('home')!.classList.toggle('hidden', s !== 'home')
-  document.getElementById('levels')!.classList.toggle('hidden', s !== 'levels')
+  for (const id of ['home', 'levels', 'shop', 'badges']) document.getElementById(id)!.classList.toggle('hidden', s !== id)
   hideModal()
+  if (s !== 'game') {
+    twist = 'none'
+    decor = []
+    applyBackground()
+  }
   if (s === 'home') refreshHome()
-  if (s === 'levels') renderLevelGrid()
+  if (s === 'levels') renderMap(basket, startLevel)
+  if (s === 'shop') renderShop(onShopChange)
+  if (s === 'badges') renderBadges()
+  renderStatus()
 }
 
 function goHome() {
@@ -1224,13 +1278,27 @@ function startRush() {
 
 function startLevel(i: number) {
   sfx.unlock()
+  refreshHearts()
+  if (save.hearts <= 0) {
+    showNoHearts(() => startLevel(i))
+    return
+  }
   const lv = levels()[i]
   currentLevel = i
   setGravity(!!lv.gravity)
   setMode('play')
-  resetScene(lv.pool)
   showScreen('game')
+  // this level's own place, twist and decorations
+  twist = lv.twist ?? 'none'
+  applyBackground(lv.place, twist === 'night')
+  makeDecor(lv.place?.decor ?? [])
+  resetScene(lv.pool)
   quest.start(lv, i)
+  // meeting a new jelly on the map unlocks it
+  for (const id of new Set(lv.pool)) if (unlockJelly(id)) toast(`🎉 New friend: <b>${JELLY_EMOJI[id] ?? ''} ${designById(id).name}</b>!`, 'green')
+  const tw = TWIST_INFO[twist]
+  if (tw.icon) setTimeout(() => toast(`${tw.icon} <b>${tw.label}!</b> ${tw.tip}`, 'blue', 3600), 400)
+  refreshBasket()
 }
 
 /** The landing page jellies hop around now and then so the scene feels alive. */
@@ -1255,37 +1323,127 @@ function refreshHome() {
   document.getElementById('h-best')!.textContent = best ? `best ${best}` : ''
 }
 
-function renderLevelGrid() {
-  const stars = loadStars(basket)
-  document.getElementById('lv-title')!.textContent = `${BASKETS[basket].emoji} ${BASKETS[basket].label} levels`
-  const grid = document.getElementById('level-grid')!
-  grid.innerHTML = ''
-  levels().forEach((lv, i) => {
-    const unlocked = isUnlocked(i, stars)
-    const st = stars[i] || 0
-    const btn = document.createElement('button')
-    btn.className = `lv-card${unlocked ? '' : ' locked'}${st ? ' cleared' : ''}`
-    btn.style.animationDelay = `${i * 40}ms`
-    btn.innerHTML = `
-      <span class="lv-num">${i + 1}</span>
-      <span class="lv-emoji">${unlocked ? lv.emoji : '🔒'}</span>
-      <b>${lv.name}</b>
-      <span class="lv-meta">${lv.tasks.length} orders · ${lv.time}s${lv.gravity ? ' · 🌍' : ''}</span>
-      <span class="lv-stars">${[1, 2, 3].map((k) => `<i class="${k <= st ? 'on' : ''}">★</i>`).join('')}</span>`
-    if (unlocked) btn.onclick = () => startLevel(i)
-    else btn.disabled = true
-    grid.appendChild(btn)
+// ---------- backgrounds: the one you equipped, or a level's own place ----------
+function applyBackground(place?: Place, dark = false) {
+  const b = bgById(save.equipped.bg)
+  const st = document.body.style
+  if (place) {
+    st.setProperty('--bg1', place.bg1)
+    st.setProperty('--bg2', place.bg2)
+    st.setProperty('--pattern', 'linear-gradient(transparent, transparent)')
+    document.body.dataset.theme = dark ? 'night' : 'milk'
+  } else {
+    st.setProperty('--bg1', b.bg1)
+    st.setProperty('--bg2', b.bg2)
+    st.setProperty('--pattern', b.pattern ?? 'linear-gradient(transparent, transparent)')
+    document.body.dataset.theme = b.dark ? 'night' : 'milk'
+  }
+}
+
+// ---------- floating decorations for each level's place ----------
+type Decor = { x: number; y: number; vy: number; phase: number; size: number; emoji: string }
+let decor: Decor[] = []
+function makeDecor(emojis: string[]) {
+  decor = []
+  if (!emojis.length) return
+  for (let i = 0; i < 12; i++)
+    decor.push({ x: Math.random() * W, y: Math.random() * H, vy: 0.15 + Math.random() * 0.35, phase: Math.random() * 6, size: 18 + Math.random() * 22, emoji: emojis[i % emojis.length] })
+}
+function drawDecor(dt: number) {
+  if (!decor.length) return
+  ctx.save()
+  ctx.globalAlpha = isDark() ? 0.5 : 0.32
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  const t = performance.now() / 1000
+  for (const d of decor) {
+    d.y -= d.vy * dt * 0.06
+    if (d.y < -40) {
+      d.y = H + 40
+      d.x = Math.random() * W
+    }
+    ctx.font = `${d.size}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`
+    ctx.fillText(d.emoji, d.x + Math.sin(t + d.phase) * 14, d.y)
+  }
+  ctx.restore()
+}
+
+// ---------- night twist: it's dark, only the spot around your finger is lit ----------
+function drawNight() {
+  if (twist !== 'night' || screen !== 'game') return
+  const r = Math.max(130, Math.min(W, H) * 0.24)
+  const g = ctx.createRadialGradient(pointer.x, pointer.y, r * 0.15, pointer.x, pointer.y, r)
+  g.addColorStop(0, 'rgba(8,6,24,0)')
+  g.addColorStop(0.7, 'rgba(8,6,24,0.45)')
+  g.addColorStop(1, 'rgba(8,6,24,0.88)')
+  ctx.fillStyle = g
+  ctx.fillRect(0, 0, W, H)
+}
+
+// ---------- hearts ----------
+function showNoHearts(retry: () => void) {
+  const wait = nextHeartIn()
+  showModal({
+    emoji: '💔',
+    emojiClass: 'broken',
+    title: 'Out of hearts!',
+    lines: [`A new heart grows back in <b>${mmss(wait)}</b>.`, 'Rush and Free Play are always free to play.'],
+    buttons: [
+      {
+        label: `Refill ❤️ for 🪙 ${REFILL_PRICE}`,
+        primary: save.coins >= REFILL_PRICE,
+        onClick: () => {
+          if (spendCoins(REFILL_PRICE)) {
+            refillHearts()
+            toast('❤️❤️❤️ Hearts refilled!', 'pink')
+            retry()
+          } else {
+            toast(`Not enough coins — 🪙 ${REFILL_PRICE - save.coins} more`, 'blue')
+            showScreen('levels')
+          }
+        },
+      },
+      { label: 'Map', onClick: () => showScreen('levels') },
+    ],
   })
-  const got = stars.reduce((a, b) => a + (b || 0), 0)
-  document.getElementById('lv-stars')!.textContent = `⭐ ${got} / ${levels().length * 3}`
+}
+const REFILL_PRICE = 150
+
+// ---------- rewards: XP, level-ups, badges ----------
+function gainXp(n: number) {
+  for (const up of addXp(n)) {
+    sfx.win()
+    toast(`⭐ <b>Level ${up.level}!</b> You're getting jiggly good!`, 'gold', 3600)
+    for (const id of up.newJellies) toast(`🎉 New friend unlocked: <b>${JELLY_EMOJI[id] ?? ''} ${designById(id).name}</b>`, 'green', 4200)
+    refreshBasket()
+  }
+}
+
+function checkBadges() {
+  for (const b of BADGES) {
+    if (save.badges.includes(b.id) || b.value() < b.goal) continue
+    if (earnBadge(b.id)) {
+      addCoins(b.reward)
+      toast(`🏅 Badge: <b>${b.emoji} ${b.name}</b> · +🪙 ${b.reward}`, 'gold', 4000)
+    }
+  }
 }
 
 // ---------- result popup ----------
 type ModalButton = { label: string; primary?: boolean; onClick: () => void }
 
-function showModal(o: { emoji: string; title: string; big?: string; stars?: number; lines: string[]; buttons: ModalButton[] }) {
+function showModal(o: { emoji: string; emojiClass?: string; title: string; big?: string; stars?: number; hearts?: { left: number; broke: boolean }; lines: string[]; buttons: ModalButton[] }) {
   const m = document.getElementById('modal')!
-  document.getElementById('m-emoji')!.textContent = o.emoji
+  const em = document.getElementById('m-emoji')!
+  em.textContent = o.emoji
+  em.className = `emoji ${o.emojiClass ?? ''}`
+  const hearts = document.getElementById('m-hearts')!
+  hearts.innerHTML = o.hearts
+    ? Array.from({ length: MAX_HEARTS }, (_, i) => {
+        const lost = o.hearts!.broke && i === o.hearts!.left
+        return `<i class="${lost ? 'breaking' : i < o.hearts!.left ? '' : 'gone'}">${i < o.hearts!.left ? '❤️' : lost ? '💔' : '🤍'}</i>`
+      }).join('')
+    : ''
   document.getElementById('m-title')!.textContent = o.title
   const big = document.getElementById('m-big')!
   big.textContent = o.big ?? ''
@@ -1313,48 +1471,82 @@ function hideModal() {
   document.getElementById('modal')!.classList.add('hidden')
 }
 
+const rewardLine = (coins: number, xp: number) => `<span class="reward">🪙 +${coins}</span><span class="reward xp">✨ +${xp} XP</span>`
+
 function showResult(r: RoundResult) {
   if (r.mode === 'rush') {
+    const coins = Math.floor(r.score / 40)
+    const xp = Math.floor(r.score / 15)
+    bump('rushGames')
+    best('bestRush', r.score)
+    addCoins(coins)
     showModal({
       emoji: '⚡🍓🥕',
       title: "Time's up!",
       big: String(r.score),
-      lines: [`${r.done} order${r.done === 1 ? '' : 's'} served`, r.newBest ? '<b>🏆 New best score!</b>' : `<b>Best: ${r.best}</b>`],
+      lines: [rewardLine(coins, xp), `${r.done} order${r.done === 1 ? '' : 's'} served`, r.newBest ? '<b>🏆 New best score!</b>' : `<b>Best: ${r.best}</b>`],
       buttons: [
         { label: 'Play again', primary: true, onClick: startRush },
         { label: 'Home', onClick: goHome },
       ],
     })
+    gainXp(xp)
+    checkBadges()
     return
   }
   if (r.won) {
+    const before = loadStars(basket)[r.index] || 0
+    const firstClear = before === 0
+    const coins = 20 + 15 * r.stars + (firstClear ? 30 : 0) + Math.max(0, r.stars - before) * 10
+    const xp = 40 + 20 * r.stars + (firstClear ? 40 : 0)
     camera.slowmo(0.25, 900)
     saveStars(basket, r.index, r.stars)
+    bump('levelsWon')
+    addCoins(coins)
     const hasNext = r.index + 1 < levels().length
     for (let i = 0; i < 4; i++) setTimeout(() => fx.juice(W * (0.2 + Math.random() * 0.6), H * (0.25 + Math.random() * 0.3), pick1(['#ff5f9c', '#ffd35c', '#7bd88f', '#6a74e6', '#ff8a3d']), 30, 1.2), i * 160)
     showModal({
       emoji: r.level.emoji,
-      title: hasNext ? 'Level complete!' : 'You are a Master Chef!',
+      title: hasNext ? 'Level complete!' : 'World complete! 👑',
       stars: r.stars,
       big: String(r.score),
-      lines: [`Lv ${r.index + 1} · ${r.level.name}`],
+      lines: [rewardLine(coins, xp), `${r.index + 1}. ${r.level.name}${firstClear ? ' · first clear bonus!' : ''}`],
       buttons: [
         ...(hasNext ? [{ label: 'Next level ▶', primary: true, onClick: () => startLevel(r.index + 1) }] : []),
         { label: 'Retry', primary: !hasNext, onClick: () => startLevel(r.index) },
-        { label: 'Levels', onClick: () => showScreen('levels') },
+        { label: 'Map', onClick: () => showScreen('levels') },
       ],
     })
+    gainXp(xp)
+    checkBadges()
   } else {
+    // failing a level breaks a heart
+    loseHeart()
+    const left = save.hearts
+    const wait = nextHeartIn()
     showModal({
       emoji: '⏰',
       title: 'Out of time!',
-      lines: [`You served ${r.done} of ${r.total} orders.`, 'Tip: use the 🔪 Knife (K) and swipe fast!'],
+      hearts: { left, broke: true },
+      lines: [
+        `You served ${r.done} of ${r.total} orders.`,
+        left > 0 ? `${left} heart${left === 1 ? '' : 's'} left · next heart in ${mmss(wait)}` : `No hearts left · next heart in <b>${mmss(wait)}</b>`,
+      ],
       buttons: [
-        { label: 'Try again', primary: true, onClick: () => startLevel(r.index) },
-        { label: 'Levels', onClick: () => showScreen('levels') },
+        { label: left > 0 ? 'Try again' : `Refill 🪙 ${REFILL_PRICE}`, primary: true, onClick: () => startLevel(r.index) },
+        { label: 'Map', onClick: () => showScreen('levels') },
       ],
     })
+    gainXp(10)
+    checkBadges()
   }
+  renderStatus()
+}
+
+function onShopChange() {
+  applyBackground()
+  renderStatus()
+  checkBadges()
 }
 
 document.getElementById('h-levels')!.onclick = () => {
@@ -1363,6 +1555,9 @@ document.getElementById('h-levels')!.onclick = () => {
 }
 document.getElementById('h-rush')!.onclick = startRush
 document.getElementById('h-free')!.onclick = startFree
+document.getElementById('h-shop')!.onclick = () => showScreen('shop')
+document.getElementById('h-badges')!.onclick = () => showScreen('badges')
+document.querySelectorAll<HTMLButtonElement>('[data-close]').forEach((b) => (b.onclick = () => showScreen(screenBefore === 'game' ? 'home' : screenBefore)))
 document.getElementById('lv-back')!.onclick = () => showScreen('home')
 document.getElementById('btn-home')!.onclick = goHome
 document.getElementById('btn-quest')!.onclick = startRush
@@ -1372,13 +1567,28 @@ document.getElementById('q-quit')!.onclick = () => {
     showScreen('levels')
   } else quest.end()
 }
+// top bar pills: hearts → map, coins → shop, level → badges
+document.getElementById('status')!.onclick = (e) => {
+  const go = (e.target as HTMLElement).closest<HTMLElement>('[data-go]')?.dataset.go
+  if (screen === 'game' && quest.active) return // don't leave a round by accident
+  if (go === 'shop') showScreen('shop')
+  if (go === 'badges') showScreen('badges')
+  if (go === 'hearts') {
+    refreshHearts()
+    toast(save.hearts >= MAX_HEARTS ? '❤️ Your hearts are full!' : `❤️ Next heart in ${mmss(nextHeartIn())}`, 'pink', 2200)
+  }
+}
 document.getElementById('btn-tags')!.onclick = (e) => {
   showTags = !showTags
   ;(e.currentTarget as HTMLElement).classList.toggle('on', showTags)
 }
+// View cycles through the backgrounds you own
 document.getElementById('btn-view')!.onclick = () => {
-  themeIdx = (themeIdx + 1) % THEMES.length
-  document.body.dataset.theme = THEMES[themeIdx]
+  const mine = BACKGROUNDS.filter((b) => save.owned.includes(b.id))
+  const i = mine.findIndex((b) => b.id === save.equipped.bg)
+  equip('bg', mine[(i + 1) % mine.length].id)
+  if (!(quest.isLevel && currentLevel !== null)) applyBackground()
+  toast(`🖼️ ${bgById(save.equipped.bg).name}`, 'blue', 1200)
 }
 // vibration on/off (only shown on touch devices)
 const hapticsBtn = document.getElementById('btn-haptics')!
@@ -1391,17 +1601,7 @@ hapticsBtn.onclick = () => {
   showHaptics()
 }
 showHaptics()
-if (isTouchDevice()) {
-  document.body.classList.add('is-touch')
-  let asked = false
-  const startMotion = () => {
-    if (asked) return
-    asked = true
-    void enableTilt()
-  }
-  window.addEventListener('touchend', startMotion, { once: true, capture: true })
-  window.addEventListener('click', startMotion, { once: true, capture: true })
-}
+if (window.matchMedia?.('(pointer: coarse)').matches || 'ontouchstart' in window) document.body.classList.add('is-touch')
 
 const soundBtn = document.getElementById('btn-sound')!
 soundBtn.onclick = () => {
@@ -1411,7 +1611,7 @@ soundBtn.onclick = () => {
 }
 
 // ---------------------------------------------------------------------------
-// Basket: fruits / veggies / both
+// Basket: fruits / veggies / both (only jellies you have unlocked appear)
 // ---------------------------------------------------------------------------
 const CHIPS: Record<Basket, string[]> = {
   fruit: ['fruit', 'bloom', 'citrus', 'melon', 'berry'],
@@ -1420,46 +1620,62 @@ const CHIPS: Record<Basket, string[]> = {
 }
 const CHIP_NAMES: Record<string, string> = { fruit: 'Fruit', veggie: 'Veggie', bloom: 'Bloom', citrus: 'Citrus', melon: 'Melon', berry: 'Berry' }
 
+/** Designs from this basket that the player has unlocked. */
+function myDesigns(b: Basket = basket) {
+  return BASKETS[b].designs.filter((d) => isUnlockedJelly(d.id))
+}
+
 function renderChips() {
   const nav = document.querySelector<HTMLElement>('.chips')!
   nav.innerHTML = ''
+  const allowed = new Set(myDesigns().map((d) => d.id))
   for (const key of CHIPS[basket]) {
     const isCat = key in CHIP_NAMES
+    const list = isCat ? designsFor(key as Category).filter((d) => allowed.has(d.id)) : allowed.has(key) ? [designById(key)] : []
     const color = isCat ? CATEGORY_COLORS[key as Category] : designById(key).juice
     const btn = document.createElement('button')
-    btn.innerHTML = `<i style="background:${color}"></i>${isCat ? CHIP_NAMES[key] : designById(key).name}`
-    btn.onclick = () => {
-      sfx.unlock()
-      if (!isCat) return spawn(designById(key))
-      const allowed = new Set(BASKETS[basket].designs.map((d) => d.id))
-      const list = designsFor(key as Category).filter((d) => allowed.has(d.id))
-      spawn(list[Math.floor(Math.random() * list.length)])
+    const label = isCat ? CHIP_NAMES[key] : designById(key).name
+    if (!list.length) {
+      const lv = isCat ? Math.min(...designsFor(key as Category).map((d) => UNLOCK_AT[d.id] ?? 1)) : (UNLOCK_AT[key] ?? 1)
+      btn.innerHTML = `🔒 ${label} <small>Lv ${lv}</small>`
+      btn.className = 'locked'
+      btn.onclick = () => toast(`🔒 ${label} unlocks at player level ${lv}`, 'blue', 1800)
+    } else {
+      btn.innerHTML = `<i style="background:${color}"></i>${label}`
+      btn.onclick = () => {
+        sfx.unlock()
+        spawn(list[Math.floor(Math.random() * list.length)])
+      }
     }
     nav.appendChild(btn)
   }
+}
+
+/** Re-apply the basket after something unlocked (chips + Rush orders update). */
+function refreshBasket() {
+  quest.setBasket(myDesigns(), basket)
+  renderChips()
 }
 
 function setBasket(b: Basket, fromUser = true) {
   const changed = b !== basket
   basket = b
   saveBasket(b)
-  quest.setBasket(BASKETS[b].designs, b)
+  refreshBasket()
   document.querySelectorAll<HTMLButtonElement>('[data-basket]').forEach((el) => el.classList.toggle('on', el.dataset.basket === b))
   document.body.dataset.basket = b
-  renderChips()
   if (screen === 'home') refreshHome()
-  if (screen === 'levels') renderLevelGrid()
+  if (screen === 'levels') renderMap(basket, startLevel)
   if (fromUser && changed) {
     sfx.unlock()
     sfx.pop()
-    if (screen !== 'game') resetScene()
+    if (screen === 'home') resetScene()
   }
 }
 
 document.querySelectorAll<HTMLButtonElement>('[data-basket]').forEach((el) => {
   el.onclick = () => setBasket(el.dataset.basket as Basket)
 })
-
 
 window.addEventListener('keydown', (e) => {
   if (screen !== 'game') return
@@ -1475,14 +1691,34 @@ window.addEventListener('keydown', (e) => {
 
 // dev-only helper for testing (not included in the built game)
 if (import.meta.env.DEV) {
-  ;(window as unknown as { __jelly: unknown }).__jelly = { centers: () => bodies.map((b) => ({ id: b.design.id, x: Math.round(b.cx), y: Math.round(b.cy) })), tilt, step: (n: number) => { for (let i = 0; i < n; i++) step() } }
+  ;(window as unknown as { __jelly: unknown }).__jelly = {
+    centers: () => bodies.map((b) => ({ id: b.design.id, x: Math.round(b.cx), y: Math.round(b.cy) })),
+    step: (n: number) => {
+      for (let i = 0; i < n; i++) step()
+    },
+    save,
+    finish: (won: boolean) => quest.end(won),
+  }
 }
 
-window.addEventListener('resize', resize)
+// keep the hearts timer, coin pills and badges fresh
+onProgress(() => renderStatus())
+setInterval(() => {
+  refreshHearts()
+  renderStatus()
+  if (screen === 'game') checkBadges()
+}, 1000)
+
+window.addEventListener('resize', () => {
+  resize()
+  if (screen === 'levels') renderMap(basket, startLevel)
+})
 resize()
 setMode('play')
 setSoft(true)
+refreshHearts()
 setBasket(basket, false)
+applyBackground()
 resetScene()
 showScreen('home')
 requestAnimationFrame(frame)

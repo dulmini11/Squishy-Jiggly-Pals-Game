@@ -6,6 +6,9 @@ export type TaskKind = 'slice' | 'eat' | 'wobble' | 'grow' | 'shrink' | 'fling'
 export type TaskSpec = { kind: TaskKind; ids: string[]; label: string; n: number }
 export type Basket = 'fruit' | 'veggie' | 'both'
 
+/** A level's special rule. */
+export type Twist = 'none' | 'night' | 'wind' | 'ice' | 'bubbles'
+
 export type Level = {
   name: string
   emoji: string
@@ -13,6 +16,26 @@ export type Level = {
   pool: string[] // design ids that appear on the table
   gravity?: boolean
   tasks: TaskSpec[]
+  /** Filled in below: the level's place, look and twist. */
+  twist?: Twist
+  place?: Place
+}
+
+/** How a level looks while you play it: its own colours and floating decorations. */
+export type Place = { bg1: string; bg2: string; decor: string[]; ground: string }
+
+export const TWIST_INFO: Record<Twist, { icon: string; label: string; tip: string }> = {
+  none: { icon: '', label: '', tip: '' },
+  night: { icon: '🌙', label: 'Night', tip: 'It is dark! Only the spot around your finger is lit.' },
+  wind: { icon: '🍃', label: 'Windy', tip: 'A breeze pushes the jellies left and right.' },
+  ice: { icon: '🧊', label: 'Icy', tip: 'Slippery! Jellies keep sliding.' },
+  bubbles: { icon: '🫧', label: 'Floaty', tip: 'The jellies float up like bubbles.' },
+}
+
+export const WORLDS: Record<Basket, { name: string; emoji: string; water1: string; water2: string }> = {
+  fruit: { name: 'Fruit Island', emoji: '🏝️', water1: '#8fe6ff', water2: '#3fb8e6' },
+  veggie: { name: 'Veggie Valley', emoji: '🌄', water1: '#b9f0b4', water2: '#5cc08a' },
+  both: { name: 'Picnic Park', emoji: '🧺', water1: '#ffd6e6', water2: '#ff9cc0' },
 }
 
 const t = (kind: TaskKind, ids: string | string[], label: string, n = 1): TaskSpec => ({
@@ -205,6 +228,50 @@ export const TRACKS: Record<Basket, Level[]> = {
       ],
     },
   ],
+}
+
+// ---------- each level's own place + twist ----------
+const P = (bg1: string, bg2: string, ground: string, ...decor: string[]): Place => ({ bg1, bg2, ground, decor })
+
+const EXTRAS: Record<Basket, [Twist, Place][]> = {
+  veggie: [
+    ['none', P('#f4fff0', '#cdeec0', '#7cc768', '🌱', '🦋')],
+    ['night', P('#2d2b4a', '#141325', '#4a3f6b', '✨', '🌙')],
+    ['none', P('#fffaf0', '#e8f5d0', '#9ad46e', '🥗', '🌿')],
+    ['none', P('#f6fff2', '#d7f0c4', '#6fbf5a', '🌻', '🐝')],
+    ['none', P('#eef5ff', '#c9dcf2', '#8aa9c9', '💧', '☁️')],
+    ['bubbles', P('#fff6ea', '#ffd9b0', '#e79a5a', '🫧', '🍲')],
+    ['wind', P('#fff9ef', '#f0e1c4', '#c9a26b', '🍃', '🔪')],
+    ['ice', P('#f2fbff', '#cfeeff', '#8fd3f2', '❄️', '👑')],
+  ],
+  fruit: [
+    ['none', P('#f3fffb', '#c9f2e4', '#5fcfa8', '🌴', '🐚')],
+    ['none', P('#fffde8', '#fff0a8', '#f2c94c', '🍋', '☀️')],
+    ['wind', P('#f0fbff', '#bfe9ff', '#f3d39a', '🌊', '⛱️')],
+    ['night', P('#2c2346', '#120f24', '#5a3f7a', '✨', '🫐')],
+    ['bubbles', P('#fff3f8', '#ffd0e4', '#ff9cc0', '🌸', '🦋')],
+    ['none', P('#eef5ff', '#c9dcf2', '#8aa9c9', '💧', '🌈')],
+    ['ice', P('#f2fbff', '#d3f1ff', '#9ad8f2', '🧊', '🥤')],
+    ['wind', P('#fff8ee', '#ffe2c2', '#ffb36b', '🍹', '👑')],
+  ],
+  both: [
+    ['none', P('#fff8f0', '#ffe2cc', '#f0a868', '🧺', '🌼')],
+    ['wind', P('#f5fff2', '#d6f5c9', '#86d06a', '🪁', '🍃')],
+    ['night', P('#2b2a48', '#121224', '#46406e', '✨', '🏮')],
+    ['none', P('#f6fff2', '#d7f0c4', '#6fbf5a', '🌻', '🐞')],
+    ['none', P('#eef5ff', '#c9dcf2', '#8aa9c9', '💧', '☁️')],
+    ['bubbles', P('#fff6ea', '#ffd9b0', '#e79a5a', '🫧', '🥤')],
+    ['ice', P('#f2fbff', '#cfeeff', '#8fd3f2', '❄️', '🔪')],
+    ['wind', P('#fff3f8', '#ffd6e6', '#ff9cc0', '🎉', '👑')],
+  ],
+}
+
+for (const b of Object.keys(TRACKS) as Basket[]) {
+  TRACKS[b].forEach((lv, i) => {
+    const [twist, place] = EXTRAS[b][i] ?? ['none', P('#fbfbfd', '#e3e4ea', '#cfd2dc')]
+    lv.twist = twist
+    lv.place = place
+  })
 }
 
 export function taskText(s: TaskSpec): string {

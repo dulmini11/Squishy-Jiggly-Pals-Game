@@ -25,6 +25,7 @@
         <button data-spawn="berry"><i style="background:#e0182f"></i>Berry</button>
       </nav>
       <div class="right">
+        <div id="status" class="status"></div>
         <div id="stats" class="stats"></div>
         <button id="btn-quest" class="play-btn">⚡ Rush</button>
         <button id="btn-home" class="round" title="Home">🏠</button>
@@ -49,6 +50,10 @@
           <button id="h-levels" class="big-btn primary">▶ Play Levels</button>
           <button id="h-rush" class="big-btn">⚡ Rush Mode <small id="h-best"></small></button>
           <button id="h-free" class="big-btn">🧸 Free Play</button>
+          <div class="home-row">
+            <button id="h-shop" class="big-btn small">🛍️ Shop</button>
+            <button id="h-badges" class="big-btn small">🏅 Badges</button>
+          </div>
         </div>
         <div class="home-foot">
           <span id="h-progress">⭐ 0 / 30 stars</span>
@@ -60,18 +65,49 @@
 
     <!-- Level map -->
     <section id="levels" class="levels hidden">
-      <div class="levels-head">
-        <button id="lv-back">← Back</button>
-        <h2 id="lv-title">Choose a level</h2>
-        <div class="basket compact" role="radiogroup" aria-label="Choose fruits, veggies or both">
-          <button data-basket="fruit"><span class="b-emoji">🍓🥝🍋</span><b>Fruits</b></button>
-          <button data-basket="veggie"><span class="b-emoji">🥕🍄🍅</span><b>Veggies</b></button>
-          <button data-basket="both"><span class="b-emoji">🍓🥕🍉</span><b>Both</b></button>
+      <div class="map-head">
+        <button id="lv-back" class="pill-btn">← Home</button>
+        <div class="map-title"><b id="map-title"></b><span id="map-stars"></span></div>
+        <div class="basket compact world-tabs" role="radiogroup" aria-label="Choose a world">
+          <button data-basket="fruit"><span class="b-emoji">🏝️</span><b>Fruits</b></button>
+          <button data-basket="veggie"><span class="b-emoji">🌄</span><b>Veggies</b></button>
+          <button data-basket="both"><span class="b-emoji">🧺</span><b>Both</b></button>
         </div>
-        <span id="lv-stars" class="lv-total"></span>
       </div>
-      <div id="level-grid" class="level-grid"></div>
+      <div id="map-scroll" class="map-scroll"><div id="map" class="map"></div></div>
     </section>
+
+    <!-- Shop -->
+    <section id="shop" class="panel-screen hidden">
+      <div class="panel">
+        <div class="panel-head">
+          <button class="pill-btn" data-close>← Back</button>
+          <h2>🛍️ Jelly Shop</h2>
+          <span id="shop-coins" class="coin-pill"></span>
+        </div>
+        <div id="shop-tabs" class="tabs">
+          <button data-tab="knife">🔪 Knives</button>
+          <button data-tab="bg">🖼️ Backgrounds</button>
+          <button data-tab="hat">🎩 Hats</button>
+        </div>
+        <div id="shop-grid" class="shop-grid"></div>
+      </div>
+    </section>
+
+    <!-- Badges -->
+    <section id="badges" class="panel-screen hidden">
+      <div class="panel">
+        <div class="panel-head">
+          <button class="pill-btn" data-close>← Back</button>
+          <h2>🏅 Badges</h2>
+          <span id="badge-count" class="coin-pill"></span>
+        </div>
+        <div id="badge-jellies" class="badge-jellies"></div>
+        <div id="badge-grid" class="badge-grid"></div>
+      </div>
+    </section>
+
+    <div id="toasts" class="toasts" aria-live="polite"></div>
 
     <!-- In-round HUD -->
     <section id="quest" class="quest hidden" aria-live="polite">
@@ -95,6 +131,7 @@
     <div id="modal" class="modal hidden">
       <div class="card">
         <div class="emoji" id="m-emoji"></div>
+        <div class="m-hearts" id="m-hearts"></div>
         <h2 id="m-title"></h2>
         <div class="m-stars" id="m-stars"></div>
         <div class="big" id="m-big"></div>
