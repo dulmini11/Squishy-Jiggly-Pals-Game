@@ -15,6 +15,8 @@ export type QuestApi = {
   popup: (x: number, y: number, text: string, color: string, size?: number) => void
   sound: { success: () => void; tick: () => void; over: () => void; start: () => void; win: () => void }
   finish: (r: RoundResult) => void
+  /** Called when an order is served, for screen effects. */
+  onOrder?: (combo: number, b: QBody) => void
 }
 
 type Task = { spec: TaskSpec; got: number; color: string }
@@ -197,6 +199,14 @@ export function createQuest(api: QuestApi) {
     },
     bestScore: () => best,
 
+    /** Extra points (e.g. multi-cuts). Returns false when no round is running. */
+    bonus(points: number) {
+      if (!active) return false
+      score += points
+      renderHud()
+      return true
+    },
+
     update(dt: number) {
       if (!active) return
       time -= dt
@@ -235,6 +245,7 @@ export function createQuest(api: QuestApi) {
       if (!level) time = Math.min(99, time + 5)
       addScore(pts, b, combo > 1 ? `+${pts}  COMBO ×${combo}` : `+${pts}  Nice!`, '#ff3d8b', 30)
       api.sound.success()
+      api.onOrder?.(combo, b)
       task = null
       $('q-text').textContent = '✓ Order served!'
       $('q-prog').textContent = level ? '' : '+5s'

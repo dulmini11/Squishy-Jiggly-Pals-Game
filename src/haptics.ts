@@ -57,4 +57,5 @@ export const haptics = {
   win: () => buzz([30, 70, 30, 70, 30, 70, 120], 0),
   lose: () => buzz([120, 80, 60], 0),
   tick: () => buzz(5, 0),
+  bigHit: () => buzz([40, 30, 70], 0),
 }

@@ -109,6 +109,12 @@ export const sfx = {
     }
     tone(500, 1100, 0.12, 'sine', 0.1, 0.22)
   },
+  slowmo() {
+    haptics.bigHit()
+    // a deep "whoom" that slides down, like time slowing
+    tone(520, 90, 0.6, 'sine', 0.16)
+    tone(780, 140, 0.45, 'triangle', 0.06, 0.03)
+  },
   whoosh() {
     haptics.fling()
     tone(900, 200, 0.25, 'sine', 0.08)

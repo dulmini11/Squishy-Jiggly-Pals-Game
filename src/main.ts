@@ -5,6 +5,7 @@ import { createQuest, type RoundResult } from './quest.ts'
 import { BASKETS, TRACKS, isUnlocked, loadBasket, loadStars, saveBasket, saveStars, type Basket } from './levels.ts'
 import { haptics } from './haptics.ts'
 import { enableTilt, isTouchDevice, tilt } from './tilt.ts'
+import { camera } from './camera.ts'
 import './jelly.css'
 
 // ---------------------------------------------------------------------------
@@ -535,7 +536,28 @@ function slice(b: Body, h1: Hit, h2: Hit, dirX: number, dirY: number): boolean {
   updateStats()
   sfx.slice()
   quest.event('slice', b)
+  camera.shake(0.12)
+  if (mode === 'knife' && pointer.down) {
+    strokeCuts++
+    if (strokeCuts >= 2) multiCut(strokeCuts, midX, midY)
+  }
   return true
+}
+
+// ---------------------------------------------------------------------------
+// Multi-cuts: slice 2+ jellies in ONE swipe for slow motion + bonus points
+// ---------------------------------------------------------------------------
+let strokeCuts = 0
+const CUT_COLORS = ['#ff3d8b', '#ff8a3d', '#7a46e0', '#1fae6a']
+
+function multiCut(n: number, x: number, y: number) {
+  const word = n === 2 ? 'DOUBLE CUT!' : n === 3 ? 'TRIPLE CUT!' : `MEGA CUT ×${n}!`
+  const bonus = 50 * (n - 1)
+  const scored = quest.bonus(bonus)
+  fx.popup(x, y - 50, scored ? `${word} +${bonus}` : word, CUT_COLORS[Math.min(n, 5) - 2], 26 + Math.min(n, 6) * 4)
+  camera.shake(0.25 + 0.12 * n)
+  camera.slowmo(n >= 3 ? 0.18 : 0.3, 350 + 150 * Math.min(n, 5))
+  sfx.slowmo()
 }
 
 // ---------------------------------------------------------------------------
@@ -551,6 +573,7 @@ function eat(b: Body) {
   stats.eaten++
   updateStats()
   sfx.eat()
+  camera.shake(0.18)
   quest.event('eat', b)
 }
 
@@ -817,8 +840,10 @@ function drawTrail() {
 let last = performance.now()
 let acc = 0
 function frame(now: number) {
-  quest.update(Math.min(0.05, (now - last) / 1000))
-  acc += Math.min(50, now - last)
+  const realMs = Math.min(50, now - last)
+  quest.update(realMs / 1000) // the round timer always runs in real time
+  camera.update(realMs, now)
+  acc += realMs * camera.timeScale // physics slows down during slow motion
   last = now
   let steps = 0
   while (acc >= 1000 / 60 && steps < 3) {
@@ -832,9 +857,13 @@ function frame(now: number) {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0)
   ctx.clearRect(0, 0, W, H)
   const night = THEMES[themeIdx] === 'night'
+  ctx.save()
+  camera.apply(ctx, W, H) // screen shake + slow-motion zoom
   fx.drawBelow(ctx)
   for (const b of bodies) drawBody(b, night)
   fx.drawAbove(ctx)
+  ctx.restore()
+  camera.overlay(ctx, W, H, night)
   drawTrail()
   requestAnimationFrame(frame)
 }
@@ -944,6 +973,7 @@ canvas.addEventListener('pointerdown', (e) => {
   if (mode === 'knife') {
     trail = [{ x: e.clientX, y: e.clientY, t: performance.now() }]
     for (const b of bodies) b.hits = []
+    strokeCuts = 0 // a new swipe starts a new multi-cut count
     return
   }
   const b = pick(e.clientX, e.clientY)
@@ -1016,6 +1046,7 @@ function endPointer(e: PointerEvent) {
     const b = grab.body
     if (bodySpeed(b) > 9) {
       sfx.whoosh()
+      camera.shake(0.15)
       b.surprise = 60
       if (!quest.active) fx.popup(b.cx, b.cy - 30, 'whoosh!', b.design.juice, 22)
       quest.event('fling', b)
@@ -1081,6 +1112,7 @@ function shake() {
   document.body.classList.remove('shaking')
   void document.body.offsetWidth
   document.body.classList.add('shaking')
+  camera.shake(0.75)
   sfx.shake()
 }
 
@@ -1130,6 +1162,10 @@ const quest = createQuest({
   popup: (x, y, text, color, size) => fx.popup(x, y, text, color, size),
   sound: { success: sfx.success, tick: sfx.tick, over: sfx.over, start: sfx.start, win: sfx.win },
   finish: showResult,
+  onOrder: (combo) => {
+    camera.shake(0.2 + 0.08 * combo)
+    if (combo >= 3) camera.slowmo(0.4, 400)
+  },
 })
 
 // ---------------------------------------------------------------------------
@@ -1284,6 +1320,8 @@ function showResult(r: RoundResult) {
     return
   }
   if (r.won) {
+    camera.shake(0.6)
+    camera.slowmo(0.25, 900)
     saveStars(basket, r.index, r.stars)
     const hasNext = r.index + 1 < levels().length
     for (let i = 0; i < 4; i++) setTimeout(() => fx.juice(W * (0.2 + Math.random() * 0.6), H * (0.25 + Math.random() * 0.3), pick1(['#ff5f9c', '#ffd35c', '#7bd88f', '#6a74e6', '#ff8a3d']), 30, 1.2), i * 160)
@@ -1300,6 +1338,7 @@ function showResult(r: RoundResult) {
       ],
     })
   } else {
+    camera.shake(0.45)
     showModal({
       emoji: '⏰',
       title: 'Out of time!',
