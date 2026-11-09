@@ -42,25 +42,32 @@ export function toast(html: string, kind: 'gold' | 'pink' | 'green' | 'blue' = '
 // ---------------------------------------------------------------------------
 // Adventure map
 // ---------------------------------------------------------------------------
-const STEP = 170 // vertical distance between islands
-const XS = [0.3, 0.72, 0.36, 0.7, 0.28, 0.66, 0.34, 0.7]
+// zig-zag of the road: -1 = far left of the road's lane, 1 = far right
+const SWING = [-0.75, 0.8, -0.55, 0.9, -0.85, 0.6, -0.65, 0.85]
 
 export function renderMap(basket: Basket, onPlay: (index: number) => void) {
   const levels = TRACKS[basket]
   const world = WORLDS[basket]
   const stars = loadStars(basket)
   const map = $('map')
-  const width = Math.min(440, window.innerWidth - 24)
-  const height = levels.length * STEP + 260
-  const pos = levels.map((_, i) => ({ x: XS[i % XS.length] * width, y: height - 150 - i * STEP }))
-  const start = { x: width * 0.62, y: height - 30 }
+  const scroller = $('map-scroll')
+  // the map fills the whole screen; the road swings across the middle
+  const width = scroller.clientWidth || window.innerWidth
+  const viewH = scroller.clientHeight || window.innerHeight
+  const step = Math.max(150, Math.min(200, viewH / 3.6)) // vertical gap between islands
+  const height = Math.max(levels.length * step + 260, viewH)
+  const swing = Math.min(width * 0.3, 320) // how far the road swings left/right
+  const cx = width / 2
+  const pos = levels.map((_, i) => ({ x: cx + SWING[i % SWING.length] * swing, y: height - 160 - i * step }))
+  const start = { x: cx + swing * 0.35, y: height - 34 }
   let current = levels.findIndex((_, i) => isUnlocked(i, stars) && !(stars[i] > 0))
   if (current < 0) current = -1 // everything cleared
 
   map.style.width = `${width}px`
   map.style.height = `${height}px`
-  map.style.setProperty('--water1', world.water1)
-  map.style.setProperty('--water2', world.water2)
+  // the whole screen becomes this world's water
+  $('levels').style.setProperty('--water1', world.water1)
+  $('levels').style.setProperty('--water2', world.water2)
   $('map-title').textContent = `${world.emoji} ${world.name}`
   const got = stars.reduce((a, s) => a + (s || 0), 0)
   $('map-stars').textContent = `⭐ ${got}/${levels.length * 3}`
@@ -96,6 +103,7 @@ export function renderMap(basket: Basket, onPlay: (index: number) => void) {
           ${i === current ? '<span class="pin">📍</span><span class="play-tag">PLAY</span>' : ''}
           <span class="name"><b>${i + 1}.</b> ${esc(lv.name)}</span>
           <span class="stars">${starRow}</span>
+          ${open ? `<span class="time">⏱ ${lv.time}s</span>` : ''}
         </button>`
     })
     .join('')
@@ -120,7 +128,6 @@ export function renderMap(basket: Basket, onPlay: (index: number) => void) {
   })
 
   // scroll so the current island is in view
-  const scroller = $('map-scroll')
   const focus = current >= 0 ? pos[current] : pos[pos.length - 1]
   requestAnimationFrame(() => {
     scroller.scrollTop = Math.max(0, focus.y - scroller.clientHeight * 0.55)

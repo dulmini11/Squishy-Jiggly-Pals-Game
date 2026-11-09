@@ -266,11 +266,31 @@ const EXTRAS: Record<Basket, [Twist, Place][]> = {
   ],
 }
 
+// ---------- timer: short for small levels, tighter as levels get harder ----------
+/** Roughly how many seconds a good player needs for each kind of order. */
+const TASK_SECONDS: Record<TaskKind, (n: number) => number> = {
+  slice: (n) => 3 + 3.5 * n,
+  eat: (n) => 4 + 4 * n,
+  wobble: (n) => 2 + 1.5 * n,
+  grow: () => 8,
+  shrink: () => 8,
+  fling: () => 6,
+}
+const TWIST_SECONDS: Record<Twist, number> = { none: 0, night: 6, wind: 3, ice: 3, bubbles: 4 }
+
+function levelTime(lv: Level, index: number) {
+  const work = lv.tasks.reduce((sum, t) => sum + TASK_SECONDS[t.kind](t.n), 0) + 4
+  const extra = TWIST_SECONDS[lv.twist ?? 'none'] + (lv.gravity ? 3 : 0)
+  const slack = 1.5 - index * 0.05 // level 1 is relaxed, the last level is tight
+  return Math.max(20, Math.round(((work + extra) * slack) / 5) * 5)
+}
+
 for (const b of Object.keys(TRACKS) as Basket[]) {
   TRACKS[b].forEach((lv, i) => {
     const [twist, place] = EXTRAS[b][i] ?? ['none', P('#fbfbfd', '#e3e4ea', '#cfd2dc')]
     lv.twist = twist
     lv.place = place
+    lv.time = levelTime(lv, i)
   })
 }
 
@@ -294,7 +314,7 @@ export function taskText(s: TaskSpec): string {
 
 export function starsFor(level: Level, timeLeft: number) {
   const f = timeLeft / level.time
-  return f >= 0.45 ? 3 : f >= 0.2 ? 2 : 1
+  return f >= 0.4 ? 3 : f >= 0.18 ? 2 : 1
 }
 
 // ---------- saved choices & progress ----------

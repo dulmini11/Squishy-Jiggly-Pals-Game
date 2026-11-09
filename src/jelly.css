@@ -1921,3 +1921,63 @@ body[data-screen='levels'] .title {
 .top {
   z-index: 6;
 }
+
+/* ---------- full-screen adventure map ---------- */
+.levels {
+  background:
+    radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.35) 0 2px, transparent 3px) 0 0 / 90px 70px,
+    radial-gradient(circle at 70% 60%, rgba(255, 255, 255, 0.25) 0 1.5px, transparent 3px) 0 0 / 120px 90px,
+    linear-gradient(180deg, var(--water1, #8fe6ff), var(--water2, #3fb8e6));
+}
+.map-head {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0));
+}
+.map-scroll {
+  width: 100%;
+}
+.map {
+  width: 100%;
+  margin: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+.map .clouds i:nth-child(2) {
+  right: -40px;
+}
+@media (min-width: 900px) {
+  .island {
+    width: 132px;
+    height: 132px;
+  }
+  .island .big {
+    font-size: 56px;
+  }
+  .island .name {
+    top: 126px;
+    font-size: 17px;
+  }
+  .island .stars {
+    top: 152px;
+    font-size: 18px;
+  }
+}
+
+.island .time {
+  position: absolute;
+  left: 50%;
+  top: 158px;
+  transform: translateX(-50%);
+  padding: 2px 9px;
+  border-radius: 99px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #1e3c6e;
+  background: rgba(255, 255, 255, 0.7);
+  white-space: nowrap;
+}
+@media (min-width: 900px) {
+  .island .time {
+    top: 178px;
+  }
+}
