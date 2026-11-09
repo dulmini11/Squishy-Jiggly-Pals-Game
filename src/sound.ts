@@ -115,6 +115,11 @@ export const sfx = {
     tone(520, 90, 0.6, 'sine', 0.16)
     tone(780, 140, 0.45, 'triangle', 0.06, 0.03)
   },
+  oops() {
+    haptics.tap()
+    // a soft low "bonk" for a wrong cut
+    tone(260, 150, 0.16, 'triangle', 0.1)
+  },
   whoosh() {
     haptics.fling()
     tone(900, 200, 0.25, 'sine', 0.08)

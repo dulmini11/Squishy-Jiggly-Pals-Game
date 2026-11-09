@@ -7,6 +7,8 @@ type Popup = { x: number; y: number; text: string; color: string; life: number; 
 const particles: Particle[] = []
 const splats: Splat[] = []
 const popups: Popup[] = []
+/** Smaller words on phones. */
+const POPUP_SCALE = typeof window !== 'undefined' && window.innerWidth < 560 ? 0.85 : 1
 
 export const fx = {
   juice(x: number, y: number, color: string, amount: number, scale: number, dirX = 0, dirY = 0) {
@@ -35,8 +37,9 @@ export const fx = {
     if (splats.length > 40) splats.shift()
   },
 
-  popup(x: number, y: number, text: string, color = '#ff4f88', size = 22) {
-    popups.push({ x, y, text, color, life: 0, size })
+  popup(x: number, y: number, text: string, color = '#ff4f88', size = 16) {
+    // keep floating words small so they never cover the jellies
+    popups.push({ x, y, text, color, life: 0, size: Math.min(size, 20) * POPUP_SCALE })
   },
 
   clear() {
@@ -96,10 +99,10 @@ export const fx = {
     ctx.textBaseline = 'middle'
     for (const p of popups) {
       const t = p.life / 70
-      const pop = t < 0.15 ? 0.6 + (t / 0.15) * 0.55 : 1.15 - Math.min(0.15, (t - 0.15) * 0.6)
+      const pop = t < 0.12 ? 0.75 + (t / 0.12) * 0.3 : 1.05 - Math.min(0.05, (t - 0.12) * 0.2)
       ctx.globalAlpha = t > 0.7 ? 1 - (t - 0.7) / 0.3 : 1
-      ctx.font = `900 ${Math.round(p.size * pop)}px ui-rounded, "Arial Black", "Segoe UI", sans-serif`
-      ctx.lineWidth = 6
+      ctx.font = `800 ${Math.round(p.size * pop)}px ui-rounded, "Segoe UI", system-ui, sans-serif`
+      ctx.lineWidth = 3.5
       ctx.strokeStyle = '#fff'
       ctx.lineJoin = 'round'
       ctx.strokeText(p.text, p.x, p.y)

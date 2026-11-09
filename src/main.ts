@@ -5,9 +5,12 @@ import { createQuest, type RoundResult } from './quest.ts'
 import { BASKETS, TRACKS, TWIST_INFO, type Place, type Twist, loadBasket, loadStars, saveBasket, saveStars, type Basket } from './levels.ts'
 import { haptics } from './haptics.ts'
 import { camera } from './camera.ts'
-import { BACKGROUNDS, JELLY_EMOJI, bgById, hatById, knifeById } from './catalog.ts'
+import { decorateToolbar } from './icons.ts'
+import { renderStats } from './dashboard.ts'
+import { BACKGROUNDS, bgById, hatById, knifeById } from './catalog.ts'
+import { ci, decorateCute, jellyIcon } from './cute.ts'
 import { BADGES } from './badges.ts'
-import { mmss, renderBadges, renderMap, renderShop, renderStatus, toast } from './menus.ts'
+import { badgeIcon, mmss, renderBadges, renderMap, renderShop, renderStatus, toast } from './menus.ts'
 import {
   MAX_HEARTS,
   UNLOCK_AT,
@@ -61,7 +64,7 @@ type Body = {
 }
 
 type Hit = { edge: number; t: number }
-type Mode = 'play' | 'knife' | 'scale'
+type Mode = 'play' | 'knife' | 'chop' | 'scale'
 
 const QUALITY_POINTS = 44
 const STIFF = { hard: 0.24, soft: 0.06 }
@@ -456,6 +459,48 @@ function segIntersect(ax: number, ay: number, bx: number, by: number, cx: number
   return { u, t }
 }
 
+/** Which tool made the current cut (for the Stats dashboard). */
+let cutTool: 'cut' | 'chop' = 'cut'
+
+/** Chop tool: one tap cuts the jelly in half with a straight, slightly tilted chop. */
+function chopBody(b: Body, x: number, y: number) {
+  const a = (Math.random() - 0.5) * 0.7 // a little tilt so every chop looks different
+  const dx = Math.sin(a)
+  const dy = Math.cos(a)
+  // where the chop line crosses the jelly's outline: the nearest crossing above and below the tap
+  let up: { hit: Hit; u: number } | null = null
+  let down: { hit: Hit; u: number } | null = null
+  for (let i = 0; i < b.n; i++) {
+    const j = (i + 1) % b.n
+    const si = dx * (b.py[i] - y) - dy * (b.px[i] - x)
+    const sj = dx * (b.py[j] - y) - dy * (b.px[j] - x)
+    if ((si > 0) === (sj > 0) || si === sj) continue
+    const t = si / (si - sj)
+    const hx = b.px[i] + (b.px[j] - b.px[i]) * t
+    const hy = b.py[i] + (b.py[j] - b.py[i]) * t
+    const u = (hx - x) * dx + (hy - y) * dy
+    if (u < 0 && (!up || u > up.u)) up = { hit: { edge: i, t }, u }
+    if (u >= 0 && (!down || u < down.u)) down = { hit: { edge: i, t }, u }
+  }
+  if (!up || !down) return
+  // draw the chop as a quick blade streak
+  const now = performance.now()
+  trail = []
+  for (let k = 0; k <= 8; k++) {
+    const u = up.u - 14 + ((down.u - up.u + 28) * k) / 8
+    trail.push({ x: x + dx * u, y: y + dy * u, t: now })
+  }
+  cutTool = 'chop'
+  const ok = slice(b, up.hit, down.hit, dx, dy)
+  cutTool = 'cut'
+  if (ok) {
+    fx.popup(x, y + up.u - 18, pick1(['chop!', 'chop!', 'whack!', 'chomp!']), '#ff7a1a', 15)
+  } else {
+    fx.popup(x, y - 20, 'too tiny', '#8a9bb0', 13)
+    sfx.scale(false)
+  }
+}
+
 function knifeSegment(x0: number, y0: number, x1: number, y1: number) {
   for (const b of bodies.slice()) {
     const found: { u: number; hit: Hit }[] = []
@@ -563,7 +608,7 @@ function slice(b: Body, h1: Hit, h2: Hit, dirX: number, dirY: number): boolean {
   updateStats()
   sfx.slice()
   quest.event('slice', b)
-  recordSlice(b.design.id)
+  recordSlice(b.design.id, cutTool)
   gainXp(1)
   if (mode === 'knife' && pointer.down) {
     strokeCuts++
@@ -581,11 +626,11 @@ const CUT_COLORS = ['#ff3d8b', '#ff8a3d', '#7a46e0', '#1fae6a']
 function multiCut(n: number, x: number, y: number) {
   best('bestCut', n)
   addCoins(5 * (n - 1))
-  fx.popup(x, y - 10, `+🪙 ${5 * (n - 1)}`, '#e0a000', 18)
-  const word = n === 2 ? 'DOUBLE CUT!' : n === 3 ? 'TRIPLE CUT!' : `MEGA CUT ×${n}!`
+  fx.popup(x, y + 12, `+${5 * (n - 1)} coins`, '#e0a000', 13)
+  const word = n === 2 ? 'Double cut' : n === 3 ? 'Triple cut' : `Mega cut ×${n}`
   const bonus = 50 * (n - 1)
   const scored = quest.bonus(bonus)
-  fx.popup(x, y - 50, scored ? `${word} +${bonus}` : word, CUT_COLORS[Math.min(n, 5) - 2], 26 + Math.min(n, 6) * 4)
+  fx.popup(x, y - 50, scored ? `${word} +${bonus}` : word, CUT_COLORS[Math.min(n, 5) - 2], 16 + Math.min(n, 4))
   camera.slowmo(n >= 3 ? 0.18 : 0.3, 350 + 150 * Math.min(n, 5))
   sfx.slowmo()
 }
@@ -599,7 +644,7 @@ function eat(b: Body) {
   bodies.splice(idx, 1)
   if (grab?.body === b) grab = null
   fx.juice(b.cx, b.cy, b.design.juice, 30, Math.max(0.7, b.radius / 90))
-  if (!quest.active) fx.popup(b.cx, b.cy - 20, pick1(['yum!', 'nom!', 'tasty!', 'mmm!']), b.design.juice, 26)
+  if (!quest.active) fx.popup(b.cx, b.cy - 20, pick1(['yum!', 'nom!', 'tasty!', 'mmm!']), b.design.juice, 15)
   stats.eaten++
   updateStats()
   sfx.eat()
@@ -915,7 +960,6 @@ function frame(now: number) {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0)
   ctx.clearRect(0, 0, W, H)
   const night = isDark()
-  drawDecor(realMs)
   ctx.save()
   camera.apply(ctx, W, H) // slow-motion zoom
   fx.drawBelow(ctx)
@@ -1038,6 +1082,10 @@ canvas.addEventListener('pointerdown', (e) => {
   }
   const b = pick(e.clientX, e.clientY)
   if (!b) return
+  if (mode === 'chop') {
+    chopBody(b, e.clientX, e.clientY)
+    return
+  }
   if (mode === 'scale') {
     scaleBody(b, !(e.shiftKey || e.button === 2))
     return
@@ -1109,7 +1157,7 @@ function endPointer(e: PointerEvent) {
       sfx.whoosh()
       bump('flings')
       b.surprise = 60
-      if (!quest.active) fx.popup(b.cx, b.cy - 30, 'whoosh!', b.design.juice, 22)
+      if (!quest.active) fx.popup(b.cx, b.cy - 30, 'whoosh!', b.design.juice, 14)
       quest.event('fling', b)
     } else sfx.wobble()
   }
@@ -1140,6 +1188,7 @@ const statEl = document.getElementById('stats')!
 const HINTS: Record<Mode, string> = {
   play: 'PLAY · Drag to wobble · Double-tap to eat · Throw it fast!',
   knife: 'KNIFE · Swipe across a jelly to slice it',
+  chop: 'CHOP · Tap a jelly to chop it in half',
   scale: 'SCALE · Click to grow · Shift / right-click to shrink',
 }
 
@@ -1176,7 +1225,11 @@ function shake() {
 document.getElementById('btn-hard')!.onclick = () => setSoft(false)
 document.getElementById('btn-soft')!.onclick = () => setSoft(true)
 document.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach((btn) => {
-  btn.onclick = () => setMode(mode === btn.dataset.mode ? 'play' : (btn.dataset.mode as Mode))
+  btn.onclick = () => {
+    sfx.unlock()
+    const m = btn.dataset.mode as Mode
+    setMode(m === 'play' || mode !== m ? m : 'play')
+  }
 })
 document.getElementById('btn-shake')!.onclick = () => {
   sfx.unlock()
@@ -1211,7 +1264,7 @@ const quest = createQuest({
   bodies: () => bodies,
   spawn: (d) => spawn(d),
   popup: (x, y, text, color, size) => fx.popup(x, y, text, color, size),
-  sound: { success: sfx.success, tick: sfx.tick, over: sfx.over, start: sfx.start, win: sfx.win },
+  sound: { success: sfx.success, tick: sfx.tick, over: sfx.over, start: sfx.start, win: sfx.win, oops: sfx.oops },
   finish: showResult,
   onOrder: (combo) => {
     if (combo >= 3) camera.slowmo(0.4, 400)
@@ -1224,28 +1277,29 @@ const quest = createQuest({
 // ---------------------------------------------------------------------------
 // Screens: home (landing) · levels (adventure map) · shop · badges · game
 // ---------------------------------------------------------------------------
-type Screen = 'home' | 'levels' | 'shop' | 'badges' | 'game'
+type Screen = 'home' | 'levels' | 'shop' | 'badges' | 'dash' | 'game'
 let screen: Screen = 'home'
 let currentLevel: number | null = null
 let lastHop = 0
 let screenBefore: Screen = 'home' // where Shop / Badges go back to
 
 function showScreen(s: Screen) {
-  if ((s === 'shop' || s === 'badges') && screen !== 'shop' && screen !== 'badges') screenBefore = screen
+  const panels: Screen[] = ['shop', 'badges', 'dash']
+  if (panels.includes(s) && !panels.includes(screen)) screenBefore = screen
   screen = s
   document.body.dataset.screen = s
   requestAnimationFrame(measureFloor)
-  for (const id of ['home', 'levels', 'shop', 'badges']) document.getElementById(id)!.classList.toggle('hidden', s !== id)
+  for (const id of ['home', 'levels', 'shop', 'badges', 'dash']) document.getElementById(id)!.classList.toggle('hidden', s !== id)
   hideModal()
   if (s !== 'game') {
     twist = 'none'
-    decor = []
     applyBackground()
   }
   if (s === 'home') refreshHome()
   if (s === 'levels') renderMap(basket, startLevel)
   if (s === 'shop') renderShop(onShopChange)
   if (s === 'badges') renderBadges()
+  if (s === 'dash') requestAnimationFrame(renderStats)
   renderStatus()
 }
 
@@ -1288,14 +1342,13 @@ function startLevel(i: number) {
   setGravity(!!lv.gravity)
   setMode('play')
   showScreen('game')
-  // this level's own place, twist and decorations
+  // this level's own place and twist
   twist = lv.twist ?? 'none'
   applyBackground(lv.place, twist === 'night')
-  makeDecor(lv.place?.decor ?? [])
   resetScene(lv.pool)
   quest.start(lv, i)
   // meeting a new jelly on the map unlocks it
-  for (const id of new Set(lv.pool)) if (unlockJelly(id)) toast(`🎉 New friend: <b>${JELLY_EMOJI[id] ?? ''} ${designById(id).name}</b>!`, 'green')
+  for (const id of new Set(lv.pool)) if (unlockJelly(id)) toast(`${jellyIcon(id, 28)} New friend: <b>${designById(id).name}</b>!`, 'green')
   const tw = TWIST_INFO[twist]
   if (tw.icon) setTimeout(() => toast(`${tw.icon} <b>${tw.label}!</b> ${tw.tip}`, 'blue', 3600), 400)
   refreshBasket()
@@ -1340,34 +1393,6 @@ function applyBackground(place?: Place, dark = false) {
   }
 }
 
-// ---------- floating decorations for each level's place ----------
-type Decor = { x: number; y: number; vy: number; phase: number; size: number; emoji: string }
-let decor: Decor[] = []
-function makeDecor(emojis: string[]) {
-  decor = []
-  if (!emojis.length) return
-  for (let i = 0; i < 12; i++)
-    decor.push({ x: Math.random() * W, y: Math.random() * H, vy: 0.15 + Math.random() * 0.35, phase: Math.random() * 6, size: 18 + Math.random() * 22, emoji: emojis[i % emojis.length] })
-}
-function drawDecor(dt: number) {
-  if (!decor.length) return
-  ctx.save()
-  ctx.globalAlpha = isDark() ? 0.5 : 0.32
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-  const t = performance.now() / 1000
-  for (const d of decor) {
-    d.y -= d.vy * dt * 0.06
-    if (d.y < -40) {
-      d.y = H + 40
-      d.x = Math.random() * W
-    }
-    ctx.font = `${d.size}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`
-    ctx.fillText(d.emoji, d.x + Math.sin(t + d.phase) * 14, d.y)
-  }
-  ctx.restore()
-}
-
 // ---------- night twist: it's dark, only the spot around your finger is lit ----------
 function drawNight() {
   if (twist !== 'night' || screen !== 'game') return
@@ -1384,21 +1409,21 @@ function drawNight() {
 function showNoHearts(retry: () => void) {
   const wait = nextHeartIn()
   showModal({
-    emoji: '💔',
+    emoji: ci('heartEmpty', 64),
     emojiClass: 'broken',
     title: 'Out of hearts!',
     lines: [`A new heart grows back in <b>${mmss(wait)}</b>.`, 'Rush and Free Play are always free to play.'],
     buttons: [
       {
-        label: `Refill ❤️ for 🪙 ${REFILL_PRICE}`,
+        label: `Refill ${ci('heart', 18)} for ${ci('coin', 18)} ${REFILL_PRICE}`,
         primary: save.coins >= REFILL_PRICE,
         onClick: () => {
           if (spendCoins(REFILL_PRICE)) {
             refillHearts()
-            toast('❤️❤️❤️ Hearts refilled!', 'pink')
+            toast(`${ci('heart', 18)}${ci('heart', 18)}${ci('heart', 18)} Hearts refilled!`, 'pink')
             retry()
           } else {
-            toast(`Not enough coins — 🪙 ${REFILL_PRICE - save.coins} more`, 'blue')
+            toast(`Not enough coins — ${ci('coin', 16)} ${REFILL_PRICE - save.coins} more`, 'blue')
             showScreen('levels')
           }
         },
@@ -1413,8 +1438,8 @@ const REFILL_PRICE = 150
 function gainXp(n: number) {
   for (const up of addXp(n)) {
     sfx.win()
-    toast(`⭐ <b>Level ${up.level}!</b> You're getting jiggly good!`, 'gold', 3600)
-    for (const id of up.newJellies) toast(`🎉 New friend unlocked: <b>${JELLY_EMOJI[id] ?? ''} ${designById(id).name}</b>`, 'green', 4200)
+    toast(`${ci('star', 24)} <b>Level ${up.level}!</b> You're getting jiggly good!`, 'gold', 3600)
+    for (const id of up.newJellies) toast(`${jellyIcon(id, 28)} New friend unlocked: <b>${designById(id).name}</b>`, 'green', 4200)
     refreshBasket()
   }
 }
@@ -1424,7 +1449,7 @@ function checkBadges() {
     if (save.badges.includes(b.id) || b.value() < b.goal) continue
     if (earnBadge(b.id)) {
       addCoins(b.reward)
-      toast(`🏅 Badge: <b>${b.emoji} ${b.name}</b> · +🪙 ${b.reward}`, 'gold', 4000)
+      toast(`${badgeIcon(b.id, 24)} Badge: <b>${b.name}</b> · +${ci('coin', 16)} ${b.reward}`, 'gold', 4000)
     }
   }
 }
@@ -1435,13 +1460,13 @@ type ModalButton = { label: string; primary?: boolean; onClick: () => void }
 function showModal(o: { emoji: string; emojiClass?: string; title: string; big?: string; stars?: number; hearts?: { left: number; broke: boolean }; lines: string[]; buttons: ModalButton[] }) {
   const m = document.getElementById('modal')!
   const em = document.getElementById('m-emoji')!
-  em.textContent = o.emoji
+  em.innerHTML = o.emoji
   em.className = `emoji ${o.emojiClass ?? ''}`
   const hearts = document.getElementById('m-hearts')!
   hearts.innerHTML = o.hearts
     ? Array.from({ length: MAX_HEARTS }, (_, i) => {
         const lost = o.hearts!.broke && i === o.hearts!.left
-        return `<i class="${lost ? 'breaking' : i < o.hearts!.left ? '' : 'gone'}">${i < o.hearts!.left ? '❤️' : lost ? '💔' : '🤍'}</i>`
+        return `<i class="${lost ? 'breaking' : i < o.hearts!.left ? '' : 'gone'}">${ci(i < o.hearts!.left || lost ? 'heart' : 'heartEmpty', 38)}</i>`
       }).join('')
     : ''
   document.getElementById('m-title')!.textContent = o.title
@@ -1456,7 +1481,7 @@ function showModal(o: { emoji: string; emojiClass?: string; title: string; big?:
   row.innerHTML = ''
   for (const b of o.buttons) {
     const el = document.createElement('button')
-    el.textContent = b.label
+    el.innerHTML = b.label
     if (b.primary) el.className = 'on'
     el.onclick = () => {
       hideModal()
@@ -1471,7 +1496,7 @@ function hideModal() {
   document.getElementById('modal')!.classList.add('hidden')
 }
 
-const rewardLine = (coins: number, xp: number) => `<span class="reward">🪙 +${coins}</span><span class="reward xp">✨ +${xp} XP</span>`
+const rewardLine = (coins: number, xp: number) => `<span class="reward">${ci('coin', 18)} +${coins}</span><span class="reward xp">${ci('star', 18)} +${xp} XP</span>`
 
 function showResult(r: RoundResult) {
   if (r.mode === 'rush') {
@@ -1481,7 +1506,7 @@ function showResult(r: RoundResult) {
     best('bestRush', r.score)
     addCoins(coins)
     showModal({
-      emoji: '⚡🍓🥕',
+      emoji: ci('rush', 64),
       title: "Time's up!",
       big: String(r.score),
       lines: [rewardLine(coins, xp), `${r.done} order${r.done === 1 ? '' : 's'} served`, r.newBest ? '<b>🏆 New best score!</b>' : `<b>Best: ${r.best}</b>`],
@@ -1506,7 +1531,7 @@ function showResult(r: RoundResult) {
     const hasNext = r.index + 1 < levels().length
     for (let i = 0; i < 4; i++) setTimeout(() => fx.juice(W * (0.2 + Math.random() * 0.6), H * (0.25 + Math.random() * 0.3), pick1(['#ff5f9c', '#ffd35c', '#7bd88f', '#6a74e6', '#ff8a3d']), 30, 1.2), i * 160)
     showModal({
-      emoji: r.level.emoji,
+      emoji: jellyIcon(r.level.tasks[0]?.ids[0] ?? r.level.pool[0], 72),
       title: hasNext ? 'Level complete!' : 'World complete! 👑',
       stars: r.stars,
       big: String(r.score),
@@ -1525,7 +1550,7 @@ function showResult(r: RoundResult) {
     const left = save.hearts
     const wait = nextHeartIn()
     showModal({
-      emoji: '⏰',
+      emoji: ci('clock', 60),
       title: 'Out of time!',
       hearts: { left, broke: true },
       lines: [
@@ -1533,7 +1558,7 @@ function showResult(r: RoundResult) {
         left > 0 ? `${left} heart${left === 1 ? '' : 's'} left · next heart in ${mmss(wait)}` : `No hearts left · next heart in <b>${mmss(wait)}</b>`,
       ],
       buttons: [
-        { label: left > 0 ? 'Try again' : `Refill 🪙 ${REFILL_PRICE}`, primary: true, onClick: () => startLevel(r.index) },
+        { label: left > 0 ? 'Try again' : `Refill ${ci('coin', 18)} ${REFILL_PRICE}`, primary: true, onClick: () => startLevel(r.index) },
         { label: 'Map', onClick: () => showScreen('levels') },
       ],
     })
@@ -1557,6 +1582,7 @@ document.getElementById('h-rush')!.onclick = startRush
 document.getElementById('h-free')!.onclick = startFree
 document.getElementById('h-shop')!.onclick = () => showScreen('shop')
 document.getElementById('h-badges')!.onclick = () => showScreen('badges')
+document.getElementById('h-stats')!.onclick = () => showScreen('dash')
 document.querySelectorAll<HTMLButtonElement>('[data-close]').forEach((b) => (b.onclick = () => showScreen(screenBefore === 'game' ? 'home' : screenBefore)))
 document.getElementById('lv-back')!.onclick = () => showScreen('home')
 document.getElementById('btn-home')!.onclick = goHome
@@ -1575,7 +1601,7 @@ document.getElementById('status')!.onclick = (e) => {
   if (go === 'badges') showScreen('badges')
   if (go === 'hearts') {
     refreshHearts()
-    toast(save.hearts >= MAX_HEARTS ? '❤️ Your hearts are full!' : `❤️ Next heart in ${mmss(nextHeartIn())}`, 'pink', 2200)
+    toast(`${ci('heart', 18)} ${save.hearts >= MAX_HEARTS ? 'Your hearts are full!' : `Next heart in ${mmss(nextHeartIn())}`}`, 'pink', 2200)
   }
 }
 document.getElementById('btn-tags')!.onclick = (e) => {
@@ -1637,9 +1663,9 @@ function renderChips() {
     const label = isCat ? CHIP_NAMES[key] : designById(key).name
     if (!list.length) {
       const lv = isCat ? Math.min(...designsFor(key as Category).map((d) => UNLOCK_AT[d.id] ?? 1)) : (UNLOCK_AT[key] ?? 1)
-      btn.innerHTML = `🔒 ${label} <small>Lv ${lv}</small>`
+      btn.innerHTML = `${ci('lock', 15)} ${label} <small>Lv ${lv}</small>`
       btn.className = 'locked'
-      btn.onclick = () => toast(`🔒 ${label} unlocks at player level ${lv}`, 'blue', 1800)
+      btn.onclick = () => toast(`${ci('lock', 16)} ${label} unlocks at player level ${lv}`, 'blue', 1800)
     } else {
       btn.innerHTML = `<i style="background:${color}"></i>${label}`
       btn.onclick = () => {
@@ -1680,6 +1706,8 @@ document.querySelectorAll<HTMLButtonElement>('[data-basket]').forEach((el) => {
 window.addEventListener('keydown', (e) => {
   if (screen !== 'game') return
   if (e.key === 'k') setMode(mode === 'knife' ? 'play' : 'knife')
+  if (e.key === 'c') setMode(mode === 'chop' ? 'play' : 'chop')
+  if (e.key === 'h') setMode('play')
   if (e.key === 's') setMode(mode === 'scale' ? 'play' : 'scale')
   if (e.key === ' ') {
     e.preventDefault()
@@ -1712,8 +1740,11 @@ setInterval(() => {
 window.addEventListener('resize', () => {
   resize()
   if (screen === 'levels') renderMap(basket, startLevel)
+  if (screen === 'dash') renderStats()
 })
 resize()
+decorateToolbar()
+decorateCute()
 setMode('play')
 setSoft(true)
 refreshHearts()

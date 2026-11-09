@@ -27,8 +27,8 @@
       <div class="right">
         <div id="status" class="status"></div>
         <div id="stats" class="stats"></div>
-        <button id="btn-quest" class="play-btn">⚡ Rush</button>
-        <button id="btn-home" class="round" title="Home">🏠</button>
+        <button id="btn-quest" class="play-btn"><i data-ci="rush" data-size="20"></i>Rush</button>
+        <button id="btn-home" class="round" title="Home"><i data-ci="home" data-size="22"></i></button>
         <button id="btn-haptics" class="round touch-only" title="Vibration">📳</button>
         <button id="btn-sound" class="round" title="Sound">🔊</button>
       </div>
@@ -37,28 +37,29 @@
     <!-- Landing page -->
     <section id="home" class="home">
       <div class="home-card">
-        <div class="badge">NEW · Veggie Kitchen 🥕🍄🍅</div>
+        <div class="badge">NEW · Veggie Kitchen <i class="mini-jellies" data-jelly="carrot,mushroom,tomato" data-size="18"></i></div>
         <h1 class="home-title"><span>Squishy</span><span>Jiggly <i class="pals">Pals 💕</i></span></h1>
         <p class="home-sub">Slice, squish &amp; snack the cutest jelly fruits and veggies. Serve every order before the timer runs out!</p>
         <div class="basket-label">Pick your basket</div>
         <div class="basket" role="radiogroup" aria-label="Choose fruits, veggies or both">
-          <button data-basket="fruit"><span class="b-emoji">🍓🥝🍋</span><b>Fruits</b></button>
-          <button data-basket="veggie"><span class="b-emoji">🥕🍄🍅</span><b>Veggies</b></button>
-          <button data-basket="both"><span class="b-emoji">🍓🥕🍉</span><b>Both</b></button>
+          <button data-basket="fruit"><span class="b-emoji" data-jelly="strawberry,kiwi,lemon" data-size="26"></span><b>Fruits</b></button>
+          <button data-basket="veggie"><span class="b-emoji" data-jelly="carrot,mushroom,tomato" data-size="26"></span><b>Veggies</b></button>
+          <button data-basket="both"><span class="b-emoji" data-jelly="strawberry,carrot,wedge" data-size="26"></span><b>Both</b></button>
         </div>
         <div class="home-buttons">
-          <button id="h-levels" class="big-btn primary">▶ Play Levels</button>
-          <button id="h-rush" class="big-btn">⚡ Rush Mode <small id="h-best"></small></button>
-          <button id="h-free" class="big-btn">🧸 Free Play</button>
+          <button id="h-levels" class="big-btn primary"><span class="bb-l"><i data-ci="play" data-size="30"></i>Play Levels</span></button>
+          <button id="h-rush" class="big-btn"><span class="bb-l"><i data-ci="rush" data-size="26"></i>Rush Mode</span><small id="h-best"></small></button>
+          <button id="h-free" class="big-btn"><span class="bb-l"><i data-ci="free" data-size="26"></i>Free Play</span></button>
           <div class="home-row">
-            <button id="h-shop" class="big-btn small">🛍️ Shop</button>
-            <button id="h-badges" class="big-btn small">🏅 Badges</button>
+            <button id="h-shop" class="big-btn small tile-btn"><i data-ci="shop" data-size="28"></i>Shop</button>
+            <button id="h-badges" class="big-btn small tile-btn"><i data-ci="badge" data-size="28"></i>Badges</button>
+            <button id="h-stats" class="big-btn small tile-btn"><i data-ci="stats" data-size="28"></i>Stats</button>
           </div>
         </div>
         <div class="home-foot">
           <span id="h-progress">⭐ 0 / 30 stars</span>
           <span class="dot-sep">·</span>
-          <span>🔪 swipe to slice · double-tap to eat</span>
+          <span class="foot-tip"><i data-ci="knife" data-size="16"></i>swipe to slice · double-tap to eat</span>
         </div>
       </div>
     </section>
@@ -66,12 +67,12 @@
     <!-- Level map -->
     <section id="levels" class="levels hidden">
       <div class="map-head">
-        <button id="lv-back" class="pill-btn">← Home</button>
+        <button id="lv-back" class="pill-btn"><i data-ci="back" data-size="16"></i>Home</button>
         <div class="map-title"><b id="map-title"></b><span id="map-stars"></span></div>
         <div class="basket compact world-tabs" role="radiogroup" aria-label="Choose a world">
-          <button data-basket="fruit"><span class="b-emoji">🏝️</span><b>Fruits</b></button>
-          <button data-basket="veggie"><span class="b-emoji">🌄</span><b>Veggies</b></button>
-          <button data-basket="both"><span class="b-emoji">🧺</span><b>Both</b></button>
+          <button data-basket="fruit"><span class="b-emoji" data-jelly="strawberry" data-size="22"></span><b>Fruits</b></button>
+          <button data-basket="veggie"><span class="b-emoji" data-jelly="carrot" data-size="22"></span><b>Veggies</b></button>
+          <button data-basket="both"><span class="b-emoji" data-ci="basket" data-size="22"></span><b>Both</b></button>
         </div>
       </div>
       <div id="map-scroll" class="map-scroll"><div id="map" class="map"></div></div>
@@ -81,14 +82,14 @@
     <section id="shop" class="panel-screen hidden">
       <div class="panel">
         <div class="panel-head">
-          <button class="pill-btn" data-close>← Back</button>
-          <h2>🛍️ Jelly Shop</h2>
+          <button class="pill-btn" data-close><i data-ci="back" data-size="16"></i>Back</button>
+          <h2><i data-ci="shop" data-size="38"></i>Jelly Shop</h2>
           <span id="shop-coins" class="coin-pill"></span>
         </div>
         <div id="shop-tabs" class="tabs">
-          <button data-tab="knife">🔪 Knives</button>
-          <button data-tab="bg">🖼️ Backgrounds</button>
-          <button data-tab="hat">🎩 Hats</button>
+          <button data-tab="knife"><i data-ci="knife" data-size="22"></i>Knives</button>
+          <button data-tab="bg"><i data-ci="frame" data-size="22"></i>Backgrounds</button>
+          <button data-tab="hat"><i data-ci="hat" data-size="22"></i>Hats</button>
         </div>
         <div id="shop-grid" class="shop-grid"></div>
       </div>
@@ -98,13 +99,33 @@
     <section id="badges" class="panel-screen hidden">
       <div class="panel">
         <div class="panel-head">
-          <button class="pill-btn" data-close>← Back</button>
-          <h2>🏅 Badges</h2>
+          <button class="pill-btn" data-close><i data-ci="back" data-size="16"></i>Back</button>
+          <h2><i data-ci="badge" data-size="38"></i>Badges</h2>
           <span id="badge-count" class="coin-pill"></span>
         </div>
         <div id="badge-jellies" class="badge-jellies"></div>
         <div id="badge-grid" class="badge-grid"></div>
       </div>
+    </section>
+
+    <!-- Stats dashboard -->
+    <section id="dash" class="panel-screen hidden">
+      <div class="panel">
+        <div class="panel-head">
+          <button class="pill-btn" data-close><i data-ci="back" data-size="16"></i>Back</button>
+          <h2><i data-ci="stats" data-size="38"></i>Your stats</h2>
+        </div>
+        <div id="stats-range" class="tabs seg" role="group" aria-label="Time range">
+          <button data-range="today">Today</button>
+          <button data-range="week">This week</button>
+          <button data-range="month">4 weeks</button>
+        </div>
+        <div class="legend"><span><i class="dot s-cut"></i>Cut with knife</span><span><i class="dot s-chop"></i>Chopped</span></div>
+        <div id="stats-tiles" class="tiles"></div>
+        <div id="stats-timeline" class="dash-card"></div>
+        <div id="stats-jellies" class="dash-card"></div>
+      </div>
+      <div id="stats-tip" class="dash-tip hidden" role="tooltip"></div>
     </section>
 
     <div id="toasts" class="toasts" aria-live="polite"></div>
@@ -145,19 +166,26 @@
     <footer class="bottom">
       <div id="hint" class="hint"></div>
       <div class="toolbar">
-        <button id="btn-hard">Hard</button>
-        <button id="btn-soft">Soft</button>
-        <span class="sep"></span>
-        <button data-mode="knife">🔪 Knife</button>
-        <button data-mode="scale">Scale</button>
-        <button id="btn-shake">Shake</button>
-        <button id="btn-reset">Reset</button>
-        <button id="btn-gravity" title="G">Gravity</button>
-        <button id="btn-faces" class="on">Faces</button>
-        <button id="btn-tags">Tags</button>
-        <button id="btn-view">View</button>
+        <div class="tool-group extra" role="group" aria-label="Extras">
+          <button id="btn-shake" data-icon="shake" title="Shake the jellies (Space)">Shake</button>
+          <button id="btn-gravity" data-icon="gravity" title="Gravity on/off (G)">Gravity</button>
+          <button id="btn-soft" data-icon="soft" title="Soft and wobbly">Soft</button>
+          <button id="btn-hard" data-icon="hard" title="Firm jellies">Hard</button>
+          <button id="btn-reset" data-icon="reset" title="Start over">Reset</button>
+          <button id="btn-faces" data-icon="faces" class="on" title="Faces on/off">Faces</button>
+          <button id="btn-tags" data-icon="tags" title="Name tags on/off">Tags</button>
+          <button id="btn-view" data-icon="view" title="Change background">View</button>
+        </div>
       </div>
     </footer>
+
+    <!-- Main tools: vertical dock in the bottom-right corner -->
+    <nav id="tool-dock" class="tool-dock" aria-label="Tools">
+      <button data-mode="play" data-icon="hand" data-key="H" title="Hand: drag to wobble, double-tap to eat (H)">Hand</button>
+      <button data-mode="knife" data-icon="knife" data-key="K" title="Knife: swipe across jellies to slice (K)">Knife</button>
+      <button data-mode="chop" data-icon="chop" data-key="C" title="Chop: tap a jelly to cut it in half (C)">Chop</button>
+      <button data-mode="scale" data-icon="grow" data-key="S" title="Grow: tap to grow, Shift or right-click to shrink (S)">Grow</button>
+    </nav>
 
     <script type="module" src="/src/main.ts"></script>
   </body>

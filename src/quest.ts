@@ -13,7 +13,7 @@ export type QuestApi = {
   bodies: () => QBody[]
   spawn: (d: Design) => void
   popup: (x: number, y: number, text: string, color: string, size?: number) => void
-  sound: { success: () => void; tick: () => void; over: () => void; start: () => void; win: () => void }
+  sound: { success: () => void; tick: () => void; over: () => void; start: () => void; win: () => void; oops: () => void }
   finish: (r: RoundResult) => void
   /** Called when an order is served, for screen effects. */
   onOrder?: (combo: number, b: QBody) => void
@@ -22,6 +22,8 @@ export type QuestApi = {
 type Task = { spec: TaskSpec; got: number; color: string }
 
 const RUSH_TIME = 60
+/** Points lost for cutting a jelly that the current order doesn't need. */
+const MISTAKE_POINTS = 15
 const BEST_KEY = 'jelly-orchard-best'
 const CAT_LABEL: Record<Category, string> = { fruit: 'Fruit', bloom: 'Bloom', citrus: 'Citrus', melon: 'Melon', berry: 'Berry', veggie: 'Veggie' }
 
@@ -50,6 +52,7 @@ export function createQuest(api: QuestApi) {
   let clock = 0
   let lastTick = 0
   let lastEnsure = 0
+  let mistakes = 0
   let task: Task | null = null
   let bestKey = BEST_KEY
   let best = Number(localStorage.getItem(bestKey) || 0)
@@ -132,6 +135,7 @@ export function createQuest(api: QuestApi) {
     lastDone = 0
     lastTick = 0
     lastEnsure = 0
+    mistakes = 0
     task = null
     $('q-level').textContent = level ? `${level.emoji} Lv ${index + 1} · ${level.name}` : '⚡ Rush'
     $('q-text').textContent = 'Get ready…'
@@ -231,8 +235,25 @@ export function createQuest(api: QuestApi) {
 
     event(kind: QEvent, b: QBody) {
       if (!active) return
-      if (kind === 'slice') addScore(10, b, '+10', b.design.juice, 18)
-      if (kind === 'eat') addScore(20, b, '+20 yum!', b.design.juice, 20)
+      if (kind === 'slice') {
+        const wanted = task?.spec.kind === 'slice' && task.spec.ids.includes(b.design.id)
+        if (wanted) addScore(10, b, '+10', b.design.juice, 14)
+        else if (task) {
+          // cut or chopped a jelly the order didn't ask for: lose points and the combo
+          const lost = Math.min(score, MISTAKE_POINTS)
+          score -= lost
+          combo = 1
+          mistakes++
+          api.popup(b.cx, b.cy - 30, lost ? `−${lost} oops` : 'oops', '#e5484d', 14)
+          api.sound.oops()
+          const box = $('q-score').parentElement!
+          box.classList.remove('minus')
+          void box.offsetWidth
+          box.classList.add('minus')
+          renderHud()
+        }
+      }
+      if (kind === 'eat') addScore(20, b, '+20', b.design.juice, 14)
       if (!task || task.spec.kind !== kind || !task.spec.ids.includes(b.design.id)) return
       task.got++
       renderTask()
@@ -243,7 +264,7 @@ export function createQuest(api: QuestApi) {
       done++
       const pts = 100 * combo
       if (!level) time = Math.min(99, time + 5)
-      addScore(pts, b, combo > 1 ? `+${pts}  COMBO ×${combo}` : `+${pts}  Nice!`, '#ff3d8b', 30)
+      addScore(pts, b, combo > 1 ? `+${pts} · combo ×${combo}` : `+${pts} nice!`, '#ff3d8b', 17)
       api.sound.success()
       api.onOrder?.(combo, b)
       task = null

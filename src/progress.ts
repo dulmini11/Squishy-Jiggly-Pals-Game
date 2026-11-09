@@ -51,6 +51,8 @@ export type Save = {
   owned: string[] // shop item ids
   equipped: { knife: string; bg: string; hat: string }
   badges: string[] // earned badge ids
+  /** Per day ("YYYY-MM-DD", local time) → per jelly → [knife cuts, chops]. Kept for 35 days. */
+  daily: Record<string, Record<string, [number, number]>>
 }
 
 const KEY = 'squishy-save-v1'
@@ -80,6 +82,7 @@ const fresh = (): Save => ({
   owned: ['knife-classic', 'bg-milk', 'hat-none'],
   equipped: { knife: 'knife-classic', bg: 'bg-milk', hat: 'hat-none' },
   badges: [],
+  daily: {},
 })
 
 function load(): Save {
@@ -95,6 +98,7 @@ function load(): Save {
       unlocked: Array.from(new Set([...base.unlocked, ...(raw.unlocked || [])])),
       owned: Array.from(new Set([...base.owned, ...(raw.owned || [])])),
       badges: Array.isArray(raw.badges) ? raw.badges : [],
+      daily: raw.daily && typeof raw.daily === 'object' ? raw.daily : {},
     }
   } catch {
     return base
@@ -220,9 +224,23 @@ export function best(stat: 'bestRush' | 'bestCombo' | 'bestCut', value: number) 
   }
 }
 
-export function recordSlice(jellyId: string) {
+/** Local calendar day, e.g. "2026-11-09". */
+export function dayKey(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+const KEEP_DAYS = 35
+
+export function recordSlice(jellyId: string, tool: 'cut' | 'chop' = 'cut') {
   save.stats.slices++
   save.stats.slicedBy[jellyId] = (save.stats.slicedBy[jellyId] || 0) + 1
+  const today = dayKey()
+  const day = (save.daily[today] ??= {})
+  const counts = (day[jellyId] ??= [0, 0])
+  counts[tool === 'chop' ? 1 : 0]++
+  // forget days older than 5 weeks so the save stays small
+  const keys = Object.keys(save.daily)
+  if (keys.length > KEEP_DAYS) for (const k of keys.sort().slice(0, keys.length - KEEP_DAYS)) delete save.daily[k]
   changed()
 }
 
