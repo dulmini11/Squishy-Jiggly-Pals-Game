@@ -4,7 +4,7 @@ import { fx } from './fx.ts'
 import { createQuest, type RoundResult } from './quest.ts'
 import { BASKETS, TRACKS, isUnlocked, loadBasket, loadStars, saveBasket, saveStars, type Basket } from './levels.ts'
 import { haptics } from './haptics.ts'
-import { enableTilt, isTouchDevice, tilt } from './tilt.ts'
+import { enableTilt, isTouchDevice, recenterTilt, takePush, tilt } from './tilt.ts'
 import { camera } from './camera.ts'
 import './jelly.css'
 
@@ -336,10 +336,21 @@ function collide(a: Body, b: Body) {
 function step() {
   const alpha = soft ? STIFF.soft : STIFF.hard
   const damp = soft ? DAMP.soft : DAMP.hard
-  // gravity points down, or wherever the phone is tilted
-  const gStrength = gravity ? 0.45 * U : 0
-  const gx = tilt.active ? tilt.x * gStrength : 0
-  const gy = tilt.active ? tilt.y * gStrength : gStrength
+  // Gravity on: fall "down" (or wherever the phone points down).
+  // Gravity off on a phone: tilting slides the jellies, moving the phone sloshes them.
+  let gx = 0
+  let gy = 0
+  if (gravity) {
+    const g = 0.45 * U
+    gx = tilt.active ? tilt.x * g : 0
+    gy = tilt.active ? tilt.y * g : g
+  } else if (tilt.active && screen !== 'levels') {
+    const g = 0.32 * U
+    gx = tilt.rx * g
+    gy = tilt.ry * g
+  }
+  const [pushX, pushY] = takePush()
+  const moved = pushX !== 0 || pushY !== 0
   for (const b of bodies) {
     // scale spring (pop-in & scale tool)
     const target = baseScale(b.design) * b.k
@@ -362,6 +373,12 @@ function step() {
       b.oy[i] = b.py[i]
       b.px[i] += b.vx[i] * damp + gx
       b.py[i] += b.vy[i] * damp + gy
+      if (moved) {
+        // each point gets a slightly different push so the jelly wobbles as it sloshes
+        const jig = 1 + 0.35 * Math.sin(i * 1.7 + b.n)
+        b.px[i] += pushX * U * jig
+        b.py[i] += pushY * U * jig
+      }
     }
   }
 
@@ -382,15 +399,16 @@ function step() {
         collide(bodies[j], bodies[i])
       }
     const m = 3
-    const floor = gravity ? floorY : H - m
+    const sliding = gravity || tilt.active
+    const floor = sliding ? floorY : H - m
     for (const b of bodies)
       for (let i = 0; i < b.n; i++) {
         if (b.px[i] < m) {
           b.px[i] = m
-          if (gravity) b.py[i] += (b.oy[i] - b.py[i]) * 0.3 // wall friction when tilted
+          if (sliding) b.py[i] += (b.oy[i] - b.py[i]) * 0.3 // wall friction when tilted
         } else if (b.px[i] > W - m) {
           b.px[i] = W - m
-          if (gravity) b.py[i] += (b.oy[i] - b.py[i]) * 0.3
+          if (sliding) b.py[i] += (b.oy[i] - b.py[i]) * 0.3
         }
         if (b.py[i] < m) b.py[i] = m
         else if (b.py[i] > floor) {
@@ -536,7 +554,6 @@ function slice(b: Body, h1: Hit, h2: Hit, dirX: number, dirY: number): boolean {
   updateStats()
   sfx.slice()
   quest.event('slice', b)
-  camera.shake(0.12)
   if (mode === 'knife' && pointer.down) {
     strokeCuts++
     if (strokeCuts >= 2) multiCut(strokeCuts, midX, midY)
@@ -555,7 +572,6 @@ function multiCut(n: number, x: number, y: number) {
   const bonus = 50 * (n - 1)
   const scored = quest.bonus(bonus)
   fx.popup(x, y - 50, scored ? `${word} +${bonus}` : word, CUT_COLORS[Math.min(n, 5) - 2], 26 + Math.min(n, 6) * 4)
-  camera.shake(0.25 + 0.12 * n)
   camera.slowmo(n >= 3 ? 0.18 : 0.3, 350 + 150 * Math.min(n, 5))
   sfx.slowmo()
 }
@@ -573,7 +589,6 @@ function eat(b: Body) {
   stats.eaten++
   updateStats()
   sfx.eat()
-  camera.shake(0.18)
   quest.event('eat', b)
 }
 
@@ -1046,7 +1061,6 @@ function endPointer(e: PointerEvent) {
     const b = grab.body
     if (bodySpeed(b) > 9) {
       sfx.whoosh()
-      camera.shake(0.15)
       b.surprise = 60
       if (!quest.active) fx.popup(b.cx, b.cy - 30, 'whoosh!', b.design.juice, 22)
       quest.event('fling', b)
@@ -1089,7 +1103,7 @@ function updateStats() {
 function setMode(m: Mode) {
   mode = m
   document.body.dataset.mode = m
-  hint.textContent = HINTS[m]
+  hint.textContent = m === 'play' && isTouchDevice() ? 'PLAY · Tilt the phone · Drag to wobble · Double-tap to eat' : HINTS[m]
   document.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach((btn) => btn.classList.toggle('on', btn.dataset.mode === m))
   canvas.classList.remove('can-grab')
 }
@@ -1109,10 +1123,6 @@ function shake() {
       b.vy[i] += ay + (Math.random() - 0.5) * 6
     }
   }
-  document.body.classList.remove('shaking')
-  void document.body.offsetWidth
-  document.body.classList.add('shaking')
-  camera.shake(0.75)
   sfx.shake()
 }
 
@@ -1163,7 +1173,6 @@ const quest = createQuest({
   sound: { success: sfx.success, tick: sfx.tick, over: sfx.over, start: sfx.start, win: sfx.win },
   finish: showResult,
   onOrder: (combo) => {
-    camera.shake(0.2 + 0.08 * combo)
     if (combo >= 3) camera.slowmo(0.4, 400)
   },
 })
@@ -1180,6 +1189,7 @@ function showScreen(s: Screen) {
   screen = s
   document.body.dataset.screen = s
   requestAnimationFrame(measureFloor)
+  if (s === 'game') recenterTilt()
   document.getElementById('home')!.classList.toggle('hidden', s !== 'home')
   document.getElementById('levels')!.classList.toggle('hidden', s !== 'levels')
   hideModal()
@@ -1320,7 +1330,6 @@ function showResult(r: RoundResult) {
     return
   }
   if (r.won) {
-    camera.shake(0.6)
     camera.slowmo(0.25, 900)
     saveStars(basket, r.index, r.stars)
     const hasNext = r.index + 1 < levels().length
@@ -1338,7 +1347,6 @@ function showResult(r: RoundResult) {
       ],
     })
   } else {
-    camera.shake(0.45)
     showModal({
       emoji: '⏰',
       title: 'Out of time!',
@@ -1385,7 +1393,17 @@ hapticsBtn.onclick = () => {
   showHaptics()
 }
 showHaptics()
-if (isTouchDevice()) document.body.classList.add('is-touch')
+if (isTouchDevice()) {
+  document.body.classList.add('is-touch')
+  let asked = false
+  const startMotion = () => {
+    if (asked) return
+    asked = true
+    void enableTilt()
+  }
+  window.addEventListener('touchend', startMotion, { once: true, capture: true })
+  window.addEventListener('click', startMotion, { once: true, capture: true })
+}
 
 const soundBtn = document.getElementById('btn-sound')!
 soundBtn.onclick = () => {
@@ -1456,6 +1474,11 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') setMode('play')
   if (e.key === 'g') document.getElementById('btn-gravity')!.click()
 })
+
+// dev-only helper for testing (not included in the built game)
+if (import.meta.env.DEV) {
+  ;(window as unknown as { __jelly: unknown }).__jelly = { centers: () => bodies.map((b) => ({ id: b.design.id, x: Math.round(b.cx), y: Math.round(b.cy) })), tilt, step: (n: number) => { for (let i = 0; i < n; i++) step() } }
+}
 
 window.addEventListener('resize', resize)
 resize()

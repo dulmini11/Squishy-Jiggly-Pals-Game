@@ -1,29 +1,18 @@
-// Screen shake + slow motion for big moments.
-//
-// Shake uses a "trauma" value from 0 to 1: big hits add trauma, it fades over
-// about half a second, and the screen moves by trauma² so small bumps stay
-// gentle while big ones really rattle.
+// Slow motion for big moments (multi-cuts, big combos, level wins).
 //
 // Slow motion lowers `timeScale`: the physics runs slower while the timer and
 // buttons keep real time. The view zooms in a touch and the edges dim, then
-// everything eases back to normal speed.
+// everything eases back to normal speed. (No screen shake: the screen stays still.)
 
 const reducedMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 
-let trauma = 0
 let slowTarget = 1
 let slowUntil = 0
-let clock = 0
 
 export const camera = {
   /** 1 = normal speed, 0.2 = five times slower. */
   timeScale: 1,
   zoom: 1,
-
-  /** Add screen shake. 0.2 = a bump, 0.5 = a big hit, 1 = an earthquake. */
-  shake(amount: number) {
-    trauma = Math.min(1, trauma + amount * (reducedMotion ? 0.3 : 1))
-  },
 
   /** Slow time to `scale` (e.g. 0.3) for `ms` milliseconds, then ease back. */
   slowmo(scale: number, ms: number) {
@@ -38,8 +27,6 @@ export const camera = {
 
   /** Call once per frame with real (not slowed) time. */
   update(realMs: number, now: number) {
-    clock += realMs
-    trauma = Math.max(0, trauma - (realMs / 1000) * 1.8)
     if (now >= slowUntil) slowTarget = 1
     const target = now < slowUntil ? slowTarget : 1
     // drop into slow motion fast, come back out gently
@@ -49,23 +36,15 @@ export const camera = {
     camera.zoom = 1 + camera.slowAmount * 0.05
   },
 
-  /** Move the drawing for shake + zoom. Wrap with ctx.save()/restore(). */
+  /** Slow-motion zoom toward the centre. Wrap with ctx.save()/restore(). */
   apply(ctx: CanvasRenderingContext2D, W: number, H: number) {
-    const s = trauma * trauma
-    if (s < 0.0005 && camera.zoom === 1) return
-    const t = clock / 1000
-    // smooth, wobbly noise from mixed sine waves (no harsh random jumps)
-    const nx = Math.sin(t * 47.1) * 0.6 + Math.sin(t * 83.7 + 1.3) * 0.4
-    const ny = Math.sin(t * 53.3 + 2.1) * 0.6 + Math.sin(t * 71.9 + 0.7) * 0.4
-    const nr = Math.sin(t * 39.7 + 4.2)
-    const max = Math.min(22, Math.min(W, H) * 0.03)
-    ctx.translate(W / 2 + nx * max * s, H / 2 + ny * max * s)
-    ctx.rotate(nr * 0.035 * s)
+    if (camera.zoom === 1) return
+    ctx.translate(W / 2, H / 2)
     ctx.scale(camera.zoom, camera.zoom)
     ctx.translate(-W / 2, -H / 2)
   },
 
-  /** Dim the edges during slow motion (drawn on top, without shake). */
+  /** Dim the edges during slow motion. */
   overlay(ctx: CanvasRenderingContext2D, W: number, H: number, night: boolean) {
     const k = camera.slowAmount
     if (k < 0.01) return
