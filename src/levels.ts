@@ -2,7 +2,7 @@
 import { DESIGNS, FRUITS, type Design } from './art.ts'
 import { VEGGIES } from './veggies.ts'
 
-export type TaskKind = 'slice' | 'eat' | 'wobble' | 'grow' | 'shrink' | 'fling'
+export type TaskKind = 'slice' | 'chop' | 'eat' | 'wobble' | 'grow' | 'shrink' | 'fling'
 export type TaskSpec = { kind: TaskKind; ids: string[]; label: string; n: number }
 export type Basket = 'fruit' | 'veggie' | 'both'
 
@@ -72,23 +72,37 @@ export const BASKETS: Record<Basket, { label: string; emoji: string; designs: De
   },
 }
 
+// Every level mixes missions: Slice (knife swipe), Chop (tap), Eat (double-tap),
+// Wobble (drag), Grow (zoom in), Shrink (zoom out) and Fling (throw fast).
 export const TRACKS: Record<Basket, Level[]> = {
   veggie: [
-    { name: 'First Chop', emoji: '🥕', time: 60, pool: ['carrot', 'mushroom', 'tomato'], tasks: [t('slice', 'carrot', 'a Carrot'), t('slice', 'mushroom', 'a Mushroom'), t('slice', 'tomato', 'a Tomato')] },
-    { name: 'Mushroom Patch', emoji: '🍄', time: 60, pool: ['mushroom', 'onion', 'mushroom'], tasks: [t('slice', 'mushroom', 'Mushrooms', 3), t('wobble', 'onion', 'the Onion', 3), t('eat', 'mushroom', 'a Mushroom')] },
+    {
+      name: 'First Chop',
+      emoji: '🥕',
+      time: 60,
+      pool: ['carrot', 'mushroom', 'tomato'],
+      tasks: [t('slice', 'carrot', 'a Carrot'), t('chop', 'mushroom', 'a Mushroom'), t('eat', 'tomato', 'a Tomato')],
+    },
+    {
+      name: 'Mushroom Patch',
+      emoji: '🍄',
+      time: 60,
+      pool: ['mushroom', 'onion', 'mushroom'],
+      tasks: [t('chop', 'mushroom', 'Mushrooms', 2), t('wobble', 'onion', 'the Onion', 3), t('grow', 'mushroom', 'a Mushroom')],
+    },
     {
       name: 'Salad Bowl',
       emoji: '🥗',
       time: 60,
       pool: ['cucumber', 'tomato', 'beetroot', 'carrot'],
-      tasks: [t('slice', 'cucumber', 'Cucumbers', 2), t('slice', 'tomato', 'Tomatoes', 2), t('eat', 'beetroot', 'a Beetroot'), t('slice', 'carrot', 'Carrots', 2)],
+      tasks: [t('slice', 'cucumber', 'Cucumbers', 2), t('eat', 'beetroot', 'a Beetroot'), t('shrink', 'tomato', 'a Tomato'), t('chop', 'carrot', 'a Carrot')],
     },
     {
       name: 'Giant Garden',
       emoji: '🍆',
       time: 55,
       pool: ['eggplant', 'tomato', 'carrot', 'mushroom'],
-      tasks: [t('grow', 'eggplant', 'an Eggplant'), t('shrink', 'carrot', 'a Carrot'), t('grow', 'mushroom', 'a Mushroom'), t('slice', 'tomato', 'Tomatoes', 2)],
+      tasks: [t('grow', 'eggplant', 'an Eggplant'), t('slice', 'tomato', 'Tomatoes', 2), t('shrink', 'carrot', 'a Carrot'), t('wobble', 'mushroom', 'the Mushroom', 3)],
     },
     {
       name: 'Veggie Rain',
@@ -96,16 +110,28 @@ export const TRACKS: Record<Basket, Level[]> = {
       time: 55,
       gravity: true,
       pool: ['carrot', 'tomato', 'cucumber', 'leek'],
-      tasks: [t('slice', VEG, 'Veggies', 4), t('fling', 'leek', 'a Leek'), t('eat', 'cucumber', 'a Cucumber')],
+      tasks: [t('chop', 'tomato', 'Tomatoes', 2), t('fling', 'leek', 'a Leek'), t('slice', 'carrot', 'Carrots', 2), t('eat', 'cucumber', 'a Cucumber')],
     },
     {
       name: 'Soup Rush',
       emoji: '🍲',
       time: 50,
       pool: ['carrot', 'mushroom', 'onion', 'leek', 'eggplant'],
-      tasks: [t('slice', 'carrot', 'Carrots', 3), t('slice', 'leek', 'Leeks', 2), t('slice', 'mushroom', 'Mushrooms', 2), t('eat', 'onion', 'Onions', 2)],
+      tasks: [
+        t('slice', 'leek', 'Leeks', 2),
+        t('chop', 'onion', 'Onions', 2),
+        t('eat', 'mushroom', 'a Mushroom'),
+        t('grow', 'eggplant', 'an Eggplant'),
+        t('wobble', 'carrot', 'the Carrot', 3),
+      ],
     },
-    { name: 'Big Chop', emoji: '🔪', time: 50, pool: VEG, tasks: [t('slice', VEG, 'any Veggie', 12)] },
+    {
+      name: 'Big Chop',
+      emoji: '🔪',
+      time: 50,
+      pool: VEG,
+      tasks: [t('chop', VEG, 'any Veggie', 4), t('slice', VEG, 'any Veggie', 4), t('shrink', 'cucumber', 'a Cucumber'), t('eat', VEG, 'any Veggie')],
+    },
     {
       name: 'Veggie Master',
       emoji: '👑',
@@ -113,33 +139,52 @@ export const TRACKS: Record<Basket, Level[]> = {
       gravity: true,
       pool: VEG,
       tasks: [
-        t('slice', VEG, 'Veggies', 6),
+        t('slice', VEG, 'Veggies', 3),
+        t('chop', VEG, 'Veggies', 3),
         t('grow', 'tomato', 'a Tomato'),
+        t('shrink', 'eggplant', 'an Eggplant'),
         t('fling', 'carrot', 'a Carrot'),
         t('eat', 'mushroom', 'Mushrooms', 2),
-        t('shrink', 'eggplant', 'an Eggplant'),
-        t('wobble', 'beetroot', 'the Beetroot', 4),
+        t('wobble', 'beetroot', 'the Beetroot', 3),
       ],
     },
   ],
 
   fruit: [
-    { name: 'Fruit Starter', emoji: '🥝', time: 60, pool: ['kiwi', 'lemon', 'strawberry'], tasks: [t('slice', 'kiwi', 'a Kiwi'), t('slice', 'lemon', 'a Lemon'), t('slice', 'strawberry', 'a Strawberry')] },
-    { name: 'Citrus Squeeze', emoji: '🍋', time: 60, pool: CITRUS, tasks: [t('slice', CITRUS, 'Citrus', 3), t('eat', 'orange', 'an Orange'), t('wobble', 'lime', 'the Lime', 3)] },
-    { name: 'Melon Party', emoji: '🍉', time: 60, pool: ['wedge', 'melonRound', 'kiwi'], tasks: [t('slice', MELON, 'Melons', 3), t('eat', 'kiwi', 'a Kiwi'), t('fling', 'melonRound', 'a Melon Slice')] },
+    {
+      name: 'Fruit Starter',
+      emoji: '🥝',
+      time: 60,
+      pool: ['kiwi', 'lemon', 'strawberry'],
+      tasks: [t('slice', 'kiwi', 'a Kiwi'), t('eat', 'strawberry', 'a Strawberry'), t('chop', 'lemon', 'a Lemon')],
+    },
+    {
+      name: 'Citrus Squeeze',
+      emoji: '🍋',
+      time: 60,
+      pool: CITRUS,
+      tasks: [t('chop', CITRUS, 'Citrus', 2), t('wobble', 'lime', 'the Lime', 3), t('slice', 'orange', 'an Orange'), t('eat', 'lemon', 'a Lemon')],
+    },
+    {
+      name: 'Melon Party',
+      emoji: '🍉',
+      time: 60,
+      pool: ['wedge', 'melonRound', 'kiwi'],
+      tasks: [t('slice', MELON, 'Melons', 2), t('grow', 'melonRound', 'a Melon Slice'), t('fling', 'kiwi', 'a Kiwi'), t('chop', 'wedge', 'a Watermelon')],
+    },
     {
       name: 'Berry Blitz',
       emoji: '🍓',
       time: 55,
       pool: ['strawberry', 'blueberry', 'blossom', 'tulip'],
-      tasks: [t('slice', 'strawberry', 'Strawberries', 3), t('eat', 'blueberry', 'Blueberries', 2), t('fling', 'blossom', 'a Blossom'), t('wobble', 'tulip', 'the Tulip', 4)],
+      tasks: [t('eat', 'blueberry', 'Blueberries', 2), t('slice', 'strawberry', 'Strawberries', 2), t('wobble', 'tulip', 'the Tulip', 3), t('chop', 'blossom', 'a Blossom')],
     },
     {
       name: 'Flower Garden',
       emoji: '🌷',
       time: 55,
       pool: ['tulip', 'blossom', 'strawberry'],
-      tasks: [t('grow', 'blossom', 'a Blossom'), t('shrink', 'tulip', 'a Tulip'), t('slice', 'blossom', 'Blossoms', 2), t('eat', 'strawberry', 'a Strawberry')],
+      tasks: [t('grow', 'blossom', 'a Blossom'), t('shrink', 'tulip', 'a Tulip'), t('chop', 'strawberry', 'a Strawberry'), t('slice', 'blossom', 'a Blossom'), t('eat', 'strawberry', 'a Strawberry')],
     },
     {
       name: 'Fruit Rain',
@@ -147,9 +192,15 @@ export const TRACKS: Record<Basket, Level[]> = {
       time: 55,
       gravity: true,
       pool: ['kiwi', 'orange', 'wedge', 'strawberry', 'lemon'],
-      tasks: [t('slice', FRUIT, 'Fruits', 5), t('fling', 'kiwi', 'a Kiwi'), t('eat', 'lemon', 'a Lemon')],
+      tasks: [t('chop', ['kiwi', 'orange', 'wedge', 'strawberry', 'lemon'], 'Fruits', 3), t('fling', 'kiwi', 'a Kiwi'), t('eat', 'lemon', 'a Lemon'), t('slice', 'orange', 'Oranges', 2)],
     },
-    { name: 'Juice Bar', emoji: '🧃', time: 50, pool: FRUIT, tasks: [t('slice', FRUIT, 'any Fruit', 12)] },
+    {
+      name: 'Juice Bar',
+      emoji: '🧃',
+      time: 50,
+      pool: FRUIT,
+      tasks: [t('slice', FRUIT, 'any Fruit', 4), t('chop', FRUIT, 'any Fruit', 4), t('grow', 'lemon', 'a Lemon'), t('eat', FRUIT, 'any Fruit', 2)],
+    },
     {
       name: 'Fruit Master',
       emoji: '👑',
@@ -158,37 +209,44 @@ export const TRACKS: Record<Basket, Level[]> = {
       pool: FRUIT,
       tasks: [
         t('slice', CITRUS, 'Citrus', 3),
-        t('slice', MELON, 'Melons', 2),
+        t('chop', MELON, 'Melons', 2),
         t('grow', 'kiwi', 'a Kiwi'),
+        t('shrink', 'lemon', 'a Lemon'),
         t('fling', 'strawberry', 'a Strawberry'),
         t('eat', 'blueberry', 'Blueberries', 2),
-        t('shrink', 'lemon', 'a Lemon'),
+        t('wobble', 'tulip', 'the Tulip', 3),
       ],
     },
   ],
 
   both: [
-    { name: 'Market Day', emoji: '🧺', time: 60, pool: ['carrot', 'kiwi', 'tomato', 'lemon'], tasks: [t('slice', 'carrot', 'a Carrot'), t('slice', 'kiwi', 'a Kiwi'), t('slice', 'tomato', 'a Tomato'), t('eat', 'lemon', 'a Lemon')] },
+    {
+      name: 'Market Day',
+      emoji: '🧺',
+      time: 60,
+      pool: ['carrot', 'kiwi', 'tomato', 'lemon'],
+      tasks: [t('slice', 'carrot', 'a Carrot'), t('chop', 'kiwi', 'a Kiwi'), t('eat', 'lemon', 'a Lemon'), t('wobble', 'tomato', 'the Tomato', 3)],
+    },
     {
       name: 'Picnic',
       emoji: '🧃',
       time: 60,
       pool: ['strawberry', 'cucumber', 'wedge', 'mushroom'],
-      tasks: [t('slice', 'strawberry', 'Strawberries', 2), t('slice', 'cucumber', 'Cucumbers', 2), t('eat', 'mushroom', 'a Mushroom'), t('wobble', 'wedge', 'the Watermelon', 3)],
+      tasks: [t('chop', 'cucumber', 'Cucumbers', 2), t('slice', 'strawberry', 'a Strawberry'), t('eat', 'mushroom', 'a Mushroom'), t('grow', 'wedge', 'a Watermelon')],
     },
     {
       name: 'Salad & Fruit',
       emoji: '🥗',
       time: 60,
       pool: ['cucumber', 'tomato', 'orange', 'blueberry', 'beetroot'],
-      tasks: [t('slice', ['cucumber', 'tomato'], 'Salad veggies', 3), t('slice', ['orange', 'blueberry'], 'Fruits', 2), t('eat', 'beetroot', 'a Beetroot')],
+      tasks: [t('slice', ['cucumber', 'tomato'], 'Salad veggies', 2), t('chop', 'orange', 'an Orange'), t('eat', 'blueberry', 'a Blueberry'), t('shrink', 'beetroot', 'a Beetroot')],
     },
     {
       name: 'Giant Garden',
       emoji: '🍆',
       time: 55,
       pool: ['eggplant', 'melonRound', 'carrot', 'lemon'],
-      tasks: [t('grow', 'eggplant', 'an Eggplant'), t('shrink', 'lemon', 'a Lemon'), t('grow', 'melonRound', 'a Melon Slice'), t('slice', 'carrot', 'Carrots', 2)],
+      tasks: [t('grow', 'eggplant', 'an Eggplant'), t('shrink', 'lemon', 'a Lemon'), t('grow', 'melonRound', 'a Melon Slice'), t('chop', 'carrot', 'Carrots', 2), t('slice', 'lemon', 'a Lemon')],
     },
     {
       name: 'Falling Feast',
@@ -196,7 +254,7 @@ export const TRACKS: Record<Basket, Level[]> = {
       time: 55,
       gravity: true,
       pool: ['carrot', 'tomato', 'cucumber', 'lemon', 'kiwi'],
-      tasks: [t('slice', ['carrot', 'tomato', 'cucumber'], 'Veggies', 4), t('fling', 'kiwi', 'a Kiwi'), t('eat', 'lemon', 'a Lemon')],
+      tasks: [t('slice', ['carrot', 'cucumber'], 'Veggies', 2), t('chop', 'tomato', 'Tomatoes', 2), t('fling', 'kiwi', 'a Kiwi'), t('eat', 'lemon', 'a Lemon')],
     },
     {
       name: 'Smoothie & Soup',
@@ -204,14 +262,20 @@ export const TRACKS: Record<Basket, Level[]> = {
       time: 55,
       pool: ['carrot', 'mushroom', 'strawberry', 'orange', 'onion'],
       tasks: [
-        t('slice', 'carrot', 'Carrots', 2),
+        t('chop', 'carrot', 'Carrots', 2),
         t('slice', 'strawberry', 'Strawberries', 2),
-        t('slice', 'mushroom', 'Mushrooms', 2),
         t('eat', 'orange', 'an Orange'),
-        t('eat', 'onion', 'an Onion'),
+        t('wobble', 'onion', 'the Onion', 3),
+        t('grow', 'mushroom', 'a Mushroom'),
       ],
     },
-    { name: 'Big Chop', emoji: '🔪', time: 55, pool: ALL, tasks: [t('slice', VEG, 'Veggies', 6), t('slice', FRUIT, 'Fruits', 6)] },
+    {
+      name: 'Big Chop',
+      emoji: '🔪',
+      time: 55,
+      pool: ALL,
+      tasks: [t('chop', VEG, 'Veggies', 4), t('slice', FRUIT, 'Fruits', 4), t('eat', ALL, 'any jelly', 2), t('shrink', 'eggplant', 'an Eggplant')],
+    },
     {
       name: 'Master Chef',
       emoji: '👑',
@@ -219,12 +283,13 @@ export const TRACKS: Record<Basket, Level[]> = {
       gravity: true,
       pool: ALL,
       tasks: [
-        t('slice', VEG, 'Veggies', 5),
-        t('slice', FRUIT, 'Fruits', 4),
+        t('slice', VEG, 'Veggies', 3),
+        t('chop', FRUIT, 'Fruits', 3),
         t('grow', 'tomato', 'a Tomato'),
+        t('shrink', 'eggplant', 'an Eggplant'),
         t('fling', 'carrot', 'a Carrot'),
         t('eat', 'mushroom', 'Mushrooms', 2),
-        t('shrink', 'eggplant', 'an Eggplant'),
+        t('wobble', 'kiwi', 'the Kiwi', 3),
       ],
     },
   ],
@@ -270,6 +335,7 @@ const EXTRAS: Record<Basket, [Twist, Place][]> = {
 /** Roughly how many seconds a good player needs for each kind of order. */
 const TASK_SECONDS: Record<TaskKind, (n: number) => number> = {
   slice: (n) => 3 + 3.5 * n,
+  chop: (n) => 3 + 3 * n,
   eat: (n) => 4 + 4 * n,
   wobble: (n) => 2 + 1.5 * n,
   grow: () => 8,
@@ -298,17 +364,19 @@ export function taskText(s: TaskSpec): string {
   const times = s.n > 1 ? ` ×${s.n}` : ''
   switch (s.kind) {
     case 'slice':
-      return `🔪 Slice ${s.label}${times}`
+      return `🔪 Slice ${s.label}${times}  (knife)`
+    case 'chop':
+      return `🪓 Chop ${s.label}${times}  (tap)`
     case 'eat':
       return `😋 Eat ${s.label}${times}  (double-tap)`
     case 'wobble':
-      return `🫳 Wobble ${s.label}${times}`
+      return `🫳 Wobble ${s.label}${times}  (drag)`
     case 'grow':
-      return `🔍 Make ${s.label} GIANT`
+      return `🔍 Grow ${s.label} GIANT  (zoom in)`
     case 'shrink':
-      return `🤏 Shrink ${s.label} tiny`
+      return `🤏 Shrink ${s.label} tiny  (zoom out)`
     case 'fling':
-      return `💨 Fling ${s.label} fast!`
+      return `💨 Fling ${s.label}  (throw fast)`
   }
 }
 

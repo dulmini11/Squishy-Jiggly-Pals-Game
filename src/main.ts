@@ -7,7 +7,7 @@ import { haptics } from './haptics.ts'
 import { camera } from './camera.ts'
 import { decorateToolbar } from './icons.ts'
 import { renderStats } from './dashboard.ts'
-import { BACKGROUNDS, bgById, hatById, knifeById } from './catalog.ts'
+import { bgById, hatById, knifeById } from './catalog.ts'
 import { ci, decorateCute, jellyIcon } from './cute.ts'
 import { BADGES } from './badges.ts'
 import { badgeIcon, mmss, renderBadges, renderMap, renderShop, renderStatus, toast } from './menus.ts'
@@ -19,7 +19,6 @@ import {
   best,
   bump,
   earnBadge,
-  equip,
   isUnlockedJelly,
   loseHeart,
   nextHeartIn,
@@ -493,12 +492,7 @@ function chopBody(b: Body, x: number, y: number) {
   cutTool = 'chop'
   const ok = slice(b, up.hit, down.hit, dx, dy)
   cutTool = 'cut'
-  if (ok) {
-    fx.popup(x, y + up.u - 18, pick1(['chop!', 'chop!', 'whack!', 'chomp!']), '#ff7a1a', 15)
-  } else {
-    fx.popup(x, y - 20, 'too tiny', '#8a9bb0', 13)
-    sfx.scale(false)
-  }
+  if (!ok) sfx.scale(false) // too small to chop again
 }
 
 function knifeSegment(x0: number, y0: number, x1: number, y1: number) {
@@ -607,12 +601,14 @@ function slice(b: Body, h1: Hit, h2: Hit, dirX: number, dirY: number): boolean {
   stats.slices++
   updateStats()
   sfx.slice()
-  quest.event('slice', b)
+  const wanted = quest.active && quest.wants(b.design.id)
+  quest.event(cutTool === 'chop' ? 'chop' : 'slice', b)
   recordSlice(b.design.id, cutTool)
   gainXp(1)
   if (mode === 'knife' && pointer.down) {
     strokeCuts++
-    if (strokeCuts >= 2) multiCut(strokeCuts, midX, midY)
+    if (wanted) strokeGood++
+    multiCut(strokeCuts, strokeGood)
   }
   return true
 }
@@ -621,18 +617,30 @@ function slice(b: Body, h1: Hit, h2: Hit, dirX: number, dirY: number): boolean {
 // Multi-cuts: slice 2+ jellies in ONE swipe for slow motion + bonus points
 // ---------------------------------------------------------------------------
 let strokeCuts = 0
-const CUT_COLORS = ['#ff3d8b', '#ff8a3d', '#7a46e0', '#1fae6a']
+let strokeGood = 0 // cuts in this swipe that the current order wanted
+let strokeRewarded = 0
 
-function multiCut(n: number, x: number, y: number) {
-  best('bestCut', n)
-  addCoins(5 * (n - 1))
-  fx.popup(x, y + 12, `+${5 * (n - 1)} coins`, '#e0a000', 13)
-  const word = n === 2 ? 'Double cut' : n === 3 ? 'Triple cut' : `Mega cut ×${n}`
-  const bonus = 50 * (n - 1)
-  const scored = quest.bonus(bonus)
-  fx.popup(x, y - 50, scored ? `${word} +${bonus}` : word, CUT_COLORS[Math.min(n, 5) - 2], 16 + Math.min(n, 4))
-  camera.slowmo(n >= 3 ? 0.18 : 0.3, 350 + 150 * Math.min(n, 5))
-  sfx.slowmo()
+/**
+ * Multi-cuts: in a level or Rush only jellies the order wants count, the bonus is small and
+ * capped (max +60 points and +3 coins per swipe), and there is no text pop-up.
+ * Slow motion is the reward you see.
+ */
+function multiCut(total: number, good: number) {
+  best('bestCut', total)
+  if (quest.active) {
+    if (good >= 2 && good > strokeRewarded) {
+      strokeRewarded = good
+      if (good <= 4) quest.bonus(20) // +20 for each extra wanted jelly, up to +60
+      if (good <= 4) addCoins(1) // +1 coin each, up to +3
+      if (good === 3) {
+        camera.slowmo(0.3, 450)
+        sfx.slowmo()
+      }
+    }
+  } else if (total === 3) {
+    camera.slowmo(0.3, 450) // free play: just the fun slow-mo
+    sfx.slowmo()
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1078,6 +1086,8 @@ canvas.addEventListener('pointerdown', (e) => {
     trail = [{ x: e.clientX, y: e.clientY, t: performance.now() }]
     for (const b of bodies) b.hits = []
     strokeCuts = 0 // a new swipe starts a new multi-cut count
+    strokeGood = 0
+    strokeRewarded = 0
     return
   }
   const b = pick(e.clientX, e.clientY)
@@ -1490,10 +1500,12 @@ function showModal(o: { emoji: string; emojiClass?: string; title: string; big?:
     row.appendChild(el)
   }
   m.classList.remove('hidden')
+  document.body.classList.add('modal-open')
 }
 
 function hideModal() {
   document.getElementById('modal')!.classList.add('hidden')
+  document.body.classList.remove('modal-open')
 }
 
 const rewardLine = (coins: number, xp: number) => `<span class="reward">${ci('coin', 18)} +${coins}</span><span class="reward xp">${ci('star', 18)} +${xp} XP</span>`
@@ -1607,14 +1619,6 @@ document.getElementById('status')!.onclick = (e) => {
 document.getElementById('btn-tags')!.onclick = (e) => {
   showTags = !showTags
   ;(e.currentTarget as HTMLElement).classList.toggle('on', showTags)
-}
-// View cycles through the backgrounds you own
-document.getElementById('btn-view')!.onclick = () => {
-  const mine = BACKGROUNDS.filter((b) => save.owned.includes(b.id))
-  const i = mine.findIndex((b) => b.id === save.equipped.bg)
-  equip('bg', mine[(i + 1) % mine.length].id)
-  if (!(quest.isLevel && currentLevel !== null)) applyBackground()
-  toast(`🖼️ ${bgById(save.equipped.bg).name}`, 'blue', 1200)
 }
 // vibration on/off (only shown on touch devices)
 const hapticsBtn = document.getElementById('btn-haptics')!

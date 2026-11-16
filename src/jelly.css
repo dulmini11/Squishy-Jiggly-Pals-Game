@@ -2634,3 +2634,50 @@ body[data-screen='dash'] #btn-quest {
   padding: 8px 6px !important;
   gap: 2px;
 }
+
+/* during play, notifications sit near the bottom so they never cover the order card */
+body[data-screen='game'] .toasts {
+  top: auto;
+  bottom: calc(150px + env(safe-area-inset-bottom));
+  flex-direction: column-reverse;
+}
+body[data-screen='game'] .toast {
+  padding: 7px 14px;
+  font-size: 13px;
+  border-radius: 14px;
+}
+@media (max-width: 560px) {
+  body[data-screen='game'] .toasts {
+    bottom: calc(132px + env(safe-area-inset-bottom));
+    width: calc(100vw - 96px);
+    left: 12px;
+    transform: none;
+    align-items: flex-start;
+  }
+}
+
+/* right jelly, wrong tool: the order card gives a little shake */
+.q-task.wrong-tool {
+  animation: wrong-tool 0.45s;
+}
+@keyframes wrong-tool {
+  20%,
+  60% {
+    transform: translateX(-6px);
+  }
+  40%,
+  80% {
+    transform: translateX(6px);
+  }
+}
+
+/* when a result popup is open, notifications go back to the top so they don't cover its buttons */
+body.modal-open .toasts,
+body[data-screen='game'].modal-open .toasts {
+  top: calc(16px + env(safe-area-inset-top));
+  bottom: auto;
+  left: 50%;
+  transform: translateX(-50%);
+  align-items: center;
+  flex-direction: column;
+}

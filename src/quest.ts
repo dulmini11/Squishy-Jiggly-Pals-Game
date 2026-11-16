@@ -64,18 +64,32 @@ export function createQuest(api: QuestApi) {
     return level ? level.pool.map(designById) : rushPool
   }
 
+  /** Rush orders: a random mix that never repeats the same kind of mission twice in a row. */
+  let lastKind = ''
   function randomSpec(): TaskSpec {
+    for (let tries = 0; tries < 4; tries++) {
+      const spec = rollSpec()
+      if (spec.kind !== lastKind || tries === 3) {
+        lastKind = spec.kind
+        return spec
+      }
+    }
+    return rollSpec()
+  }
+
+  function rollSpec(): TaskSpec {
     const allowed = new Set(rushPool.map((x) => x.id))
     const present = api.bodies().filter((b) => b.whole && allowed.has(b.design.id)).map((b) => b.design)
     const d = present.length ? pick(present) : pick(rushPool)
     const roll = Math.random()
-    if (roll < 0.32) {
+    if (roll < 0.34) {
       const n = randInt(1, 3)
-      if (Math.random() < 0.5) return { kind: 'slice', ids: [d.id], label: n > 1 ? plural(d.name) : `a ${d.name}`, n }
+      const cut: TaskKind = Math.random() < 0.5 ? 'slice' : 'chop'
+      if (Math.random() < 0.5) return { kind: cut, ids: [d.id], label: n > 1 ? plural(d.name) : `a ${d.name}`, n }
       const cats = [...new Set(rushPool.map((x) => x.category))]
       const c = pick<Category>(cats)
       const ids = designsFor(c).filter((x) => allowed.has(x.id)).map((x) => x.id)
-      return { kind: 'slice', ids, label: n > 1 ? plural(CAT_LABEL[c]) : CAT_LABEL[c], n }
+      return { kind: cut, ids, label: n > 1 ? plural(CAT_LABEL[c]) : CAT_LABEL[c], n }
     }
     if (roll < 0.5) return { kind: 'eat', ids: [d.id], label: `a ${d.name}`, n: 1 }
     if (roll < 0.68) return { kind: 'wobble', ids: [d.id], label: `the ${d.name}`, n: randInt(3, 5) }
@@ -177,10 +191,17 @@ export function createQuest(api: QuestApi) {
     api.finish({ mode: 'rush', score, done, best, newBest })
   }
 
-  function addScore(points: number, b: QBody, text: string, color: string, size = 22) {
+  /** Add points. Only a finished order shows a (small) floating text; cuts stay quiet. */
+  function addScore(points: number, b?: QBody, text?: string) {
     score += points
-    api.popup(b.cx, b.cy - 30, text, color, size)
+    if (b && text) api.popup(b.cx, b.cy - 30, text, '#ff3d8b', 15)
     renderHud()
+  }
+
+  function flash(cls: string, el: HTMLElement) {
+    el.classList.remove(cls)
+    void el.offsetWidth
+    el.classList.add(cls)
   }
 
   return {
@@ -233,38 +254,39 @@ export function createQuest(api: QuestApi) {
       renderHud()
     },
 
-    event(kind: QEvent, b: QBody) {
-      if (!active) return
-      if (kind === 'slice') {
-        const wanted = task?.spec.kind === 'slice' && task.spec.ids.includes(b.design.id)
-        if (wanted) addScore(10, b, '+10', b.design.juice, 14)
-        else if (task) {
-          // cut or chopped a jelly the order didn't ask for: lose points and the combo
-          const lost = Math.min(score, MISTAKE_POINTS)
-          score -= lost
+    /** Returns true when this action counted for the current order. */
+    event(kind: QEvent, b: QBody): boolean {
+      if (!active) return false
+      const matches = !!task && task.spec.ids.includes(b.design.id)
+      const counts = matches && task!.spec.kind === kind
+      if (kind === 'slice' || kind === 'chop') {
+        const otherCut = kind === 'slice' ? 'chop' : 'slice'
+        if (counts) addScore(10)
+        else if (matches && task!.spec.kind === otherCut) {
+          // right jelly, wrong tool: it doesn't count — nudge the order card instead of punishing
+          flash('wrong-tool', $('q-task'))
+        } else if (task) {
+          // cut or chopped a jelly the order didn't ask for: lose points and the combo (no text pop-up)
+          score -= Math.min(score, MISTAKE_POINTS)
           combo = 1
           mistakes++
-          api.popup(b.cx, b.cy - 30, lost ? `−${lost} oops` : 'oops', '#e5484d', 14)
           api.sound.oops()
-          const box = $('q-score').parentElement!
-          box.classList.remove('minus')
-          void box.offsetWidth
-          box.classList.add('minus')
+          flash('minus', $('q-score').parentElement!)
           renderHud()
         }
       }
-      if (kind === 'eat') addScore(20, b, '+20', b.design.juice, 14)
-      if (!task || task.spec.kind !== kind || !task.spec.ids.includes(b.design.id)) return
+      if (kind === 'eat' && counts) addScore(20)
+      if (!task || !counts) return false
       task.got++
       renderTask()
-      if (task.got < task.spec.n) return
+      if (task.got < task.spec.n) return true
       // order complete!
       combo = clock - lastDone < 10 && done > 0 ? Math.min(5, combo + 1) : 1
       lastDone = clock
       done++
       const pts = 100 * combo
       if (!level) time = Math.min(99, time + 5)
-      addScore(pts, b, combo > 1 ? `+${pts} · combo ×${combo}` : `+${pts} nice!`, '#ff3d8b', 17)
+      addScore(pts, b, combo > 1 ? `+${pts} · combo ×${combo}` : `+${pts}`)
       api.sound.success()
       api.onOrder?.(combo, b)
       task = null
@@ -274,11 +296,16 @@ export function createQuest(api: QuestApi) {
         setTimeout(() => {
           if (active) finishRound(true)
         }, 700)
-        return
+        return true
       }
       setTimeout(() => {
         if (active) nextTask()
       }, 600)
+      return true
+    },
+    /** Is this jelly what the current order wants (any tool)? */
+    wants(id: string) {
+      return !!task && task.spec.ids.includes(id)
     },
   }
 }
