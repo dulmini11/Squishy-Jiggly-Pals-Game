@@ -1,0 +1,56 @@
+rules_version = '2';
+
+// Squishy Jiggly Pals — Firestore security rules.
+// Players sign in anonymously (automatic, no login screen) and may only add to stats.
+// Only the owner account(s) listed in isAdmin() can read the dashboard data.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // ⚠️ Replace with the email you use to log in to the dashboard.
+    function isAdmin() {
+      return signedIn() && request.auth.token.email in ['owner@example.com'];
+    }
+
+    // Numbers may only go up, and by a sane amount per write.
+    function smallIncrease(field) {
+      return !(field in resource.data)
+        || (request.resource.data[field] >= resource.data[field]
+            && request.resource.data[field] - resource.data[field] <= 500);
+    }
+
+    match /days/{day} {
+      allow read: if isAdmin();
+      allow create: if signedIn();
+      allow update: if signedIn()
+        && smallIncrease('cuts') && smallIncrease('chops') && smallIncrease('sessions');
+
+      match /players/{uid} {
+        allow read: if isAdmin();
+        allow write: if signedIn() && request.auth.uid == uid;
+      }
+    }
+
+    match /players/{uid} {
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow write: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /levels/{id} {
+      allow read: if isAdmin();
+      allow create, update: if signedIn();
+    }
+
+    // Public leaderboard: anyone can read, each player writes only their own best score.
+    match /rush/{uid} {
+      allow read: if true;
+      allow write: if signedIn() && request.auth.uid == uid
+        && request.resource.data.score is int
+        && request.resource.data.score >= 0
+        && request.resource.data.score < 100000;
+    }
+  }
+}

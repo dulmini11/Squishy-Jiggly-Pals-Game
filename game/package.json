@@ -1,12 +1,16 @@
 {
-  "name": "squishy-jiggly-pals",
+  "name": "game",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview"
+  },
+  "dependencies": {
+    "firebase": "13.1.0",
+    "shared": "*"
   },
   "devDependencies": {
     "typescript": "^5.9.3",

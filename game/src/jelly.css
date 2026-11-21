@@ -2681,3 +2681,156 @@ body[data-screen='game'].modal-open .toasts {
   align-items: center;
   flex-direction: column;
 }
+
+/* level start card */
+.modal.level-card .card {
+  max-width: min(440px, calc(100vw - 32px));
+  text-align: left;
+}
+.modal.level-card h2,
+.modal.level-card .emoji {
+  text-align: center;
+}
+.modal.level-card #m-lines p {
+  margin: 8px 0;
+  color: var(--pill-ink);
+}
+.card-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+}
+.card-missions {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+.card-missions li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: rgba(127, 127, 150, 0.08);
+  font-size: 14px;
+  font-weight: 600;
+}
+.card-twist,
+.card-note {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+}
+.card-specials {
+  display: grid;
+  gap: 6px;
+}
+.card-specials span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.modal.level-card .row {
+  justify-content: center;
+}
+/* little special-jelly icons on map islands */
+.island .feats {
+  position: absolute;
+  right: -12px;
+  bottom: 10px;
+  display: flex;
+  padding: 2px 4px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 4px 10px rgba(20, 40, 80, 0.18);
+}
+.island .feats .jelly-ic + .jelly-ic {
+  margin-left: -4px;
+}
+
+/* bomb went off: a quick warm flash at the screen edges */
+body.boom::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: radial-gradient(circle, rgba(255, 140, 60, 0) 40%, rgba(255, 90, 40, 0.35) 100%);
+  animation: boom-flash 0.5s ease-out forwards;
+}
+@keyframes boom-flash {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* timer feedback: +time (green), −time (red), frozen (icy) */
+.q-tdelta {
+  font-size: 13px;
+  font-weight: 800;
+  opacity: 0;
+  min-width: 0;
+}
+.q-tdelta.show {
+  animation: tdelta 1.2s ease-out forwards;
+}
+.q-tdelta.up {
+  color: #1f9d55;
+}
+.q-tdelta.down {
+  color: #e5484d;
+}
+.q-tdelta.ice {
+  color: #2e8fd6;
+}
+@keyframes tdelta {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  15% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.quest.time-up .q-clock {
+  animation: tick-good 0.6s;
+}
+.quest.time-down .q-clock {
+  animation: tick-bad 0.6s;
+}
+@keyframes tick-good {
+  30% {
+    color: #1f9d55;
+    transform: scale(1.2);
+  }
+}
+@keyframes tick-bad {
+  30% {
+    color: #e5484d;
+    transform: scale(1.2);
+  }
+}
+.quest.frozen .q-top {
+  background: linear-gradient(90deg, #e6f6ff, #ffffff);
+  box-shadow: 0 0 0 2px #9fdcf5, 0 10px 30px rgba(20, 20, 50, 0.12);
+}
+.quest.frozen .q-bar i {
+  background: linear-gradient(90deg, #9fdcf5, #d6f2ff);
+}
+.quest.frozen .q-clock {
+  color: #2e8fd6;
+}

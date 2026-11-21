@@ -1,0 +1,9 @@
+{
+  "appId": "com.squishyjigglypals.app",
+  "appName": "Squishy Jiggly Pals",
+  "webDir": "www",
+  "backgroundColor": "#f6f6f9",
+  "android": {
+    "allowMixedContent": false
+  }
+}

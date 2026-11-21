@@ -120,6 +120,31 @@ export const sfx = {
     // a soft low "bonk" for a wrong cut
     tone(260, 150, 0.16, 'triangle', 0.1)
   },
+  boom() {
+    haptics.lose()
+    const a = ctx()
+    if (!a) return
+    const t = a.currentTime
+    const len = Math.floor(a.sampleRate * 0.5)
+    const buf = a.createBuffer(1, len, a.sampleRate)
+    const data = buf.getChannelData(0)
+    for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2.5
+    const src = a.createBufferSource()
+    src.buffer = buf
+    const lp = a.createBiquadFilter()
+    lp.type = 'lowpass'
+    lp.frequency.setValueAtTime(1400, t)
+    lp.frequency.exponentialRampToValueAtTime(120, t + 0.45)
+    const g = a.createGain()
+    g.gain.value = 0.55
+    src.connect(lp).connect(g).connect(a.destination)
+    src.start(t)
+    tone(140, 38, 0.5, 'sine', 0.3)
+  },
+  freeze() {
+    haptics.tap()
+    ;[1568, 1319, 1047].forEach((f, i) => tone(f, f * 1.02, 0.18, 'sine', 0.07, i * 0.05))
+  },
   whoosh() {
     haptics.fling()
     tone(900, 200, 0.25, 'sine', 0.08)

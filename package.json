@@ -1,0 +1,19 @@
+{
+  "name": "squishy-jiggly-pals-monorepo",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "game",
+    "dashboard",
+    "mobile"
+  ],
+  "scripts": {
+    "dev:game": "npm run dev -w game",
+    "dev:dashboard": "npm run dev -w dashboard",
+    "build:game": "npm run build -w game",
+    "build:dashboard": "npm run build -w dashboard",
+    "build:all": "npm run build -w game && npm run build -w dashboard",
+    "mobile:sync": "npm run sync -w mobile",
+    "mobile:open": "npm run open -w mobile"
+  }
+}

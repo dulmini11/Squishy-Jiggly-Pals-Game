@@ -19,7 +19,31 @@ export type Level = {
   /** Filled in below: the level's place, look and twist. */
   twist?: Twist
   place?: Place
+  /** Filled in below: special jellies and timer rules that make each level different. */
+  rules?: LevelRules
 }
+
+/**
+ * What makes a level special:
+ * - bomb / clock / freeze / gold: how many of that special jelly appear per minute
+ * - orderBonus: seconds added each time you serve an order
+ * - drain: how fast the timer runs at the end (1 = normal, 1.5 = 50% faster as you finish orders)
+ * - timeScale: start with less (or more) time; < 1 makes it a "clock hunt" where you need ⏱️ clocks
+ */
+export type LevelRules = {
+  bomb?: number
+  clock?: number
+  freeze?: number
+  gold?: number
+  orderBonus?: number
+  drain?: number
+  timeScale?: number
+  /** One short line for the level's start card. */
+  note?: string
+}
+
+/** Rush mode: a bit of everything. */
+export const RUSH_RULES: LevelRules = { bomb: 4, clock: 3, freeze: 1, gold: 1 }
 
 /** How a level looks while you play it: its own colours and floating decorations. */
 export type Place = { bg1: string; bg2: string; decor: string[]; ground: string }
@@ -351,12 +375,48 @@ function levelTime(lv: Level, index: number) {
   return Math.max(20, Math.round(((work + extra) * slack) / 5) * 5)
 }
 
+// ---------- each level's own rules: they build up as the worlds go on ----------
+const R = (r: LevelRules) => r
+const RULES: Record<Basket, LevelRules[]> = {
+  veggie: [
+    R({ note: 'Warm-up: no surprises.' }),
+    R({ clock: 4, timeScale: 0.85, note: 'Clocks appear — cut them for +5 seconds.' }),
+    R({ bomb: 3, note: 'Bombs appear — never cut or eat them!' }),
+    R({ gold: 3, orderBonus: 4, note: 'Golden stars give bonus coins. Each order adds +4s.' }),
+    R({ bomb: 4, clock: 3, note: 'Bombs and clocks fall from the sky.' }),
+    R({ bomb: 4, freeze: 3, drain: 1.4, note: 'Time runs faster as you go — freeze it with ❄️.' }),
+    R({ bomb: 6, clock: 5, timeScale: 0.7, note: 'Clock hunt! Little time — grab every ⏱️ clock.' }),
+    R({ bomb: 7, clock: 3, freeze: 2, gold: 2, drain: 1.5, note: 'Master level: everything at once.' }),
+  ],
+  fruit: [
+    R({ note: 'Warm-up: no surprises.' }),
+    R({ clock: 4, timeScale: 0.85, note: 'Clocks appear — cut them for +5 seconds.' }),
+    R({ bomb: 3, gold: 2, note: 'Bombs appear — never cut them! Golden stars are treasure.' }),
+    R({ bomb: 3, freeze: 3, note: 'It is dark — watch out for bombs. ❄️ stops the clock.' }),
+    R({ clock: 3, orderBonus: 5, drain: 1.3, note: 'Each order adds +5s, but time speeds up.' }),
+    R({ bomb: 5, clock: 3, note: 'Raining bombs and clocks.' }),
+    R({ bomb: 5, freeze: 2, gold: 3, drain: 1.4, note: 'Slippery bar: bombs slide too!' }),
+    R({ bomb: 7, clock: 4, freeze: 2, gold: 2, drain: 1.5, timeScale: 0.85, note: 'Master level: everything at once.' }),
+  ],
+  both: [
+    R({ clock: 2, note: 'A few clocks to help you.' }),
+    R({ bomb: 3, note: 'Bombs appear — never cut or eat them!' }),
+    R({ bomb: 3, freeze: 3, orderBonus: 3, note: 'Night picnic: bombs hide in the dark.' }),
+    R({ bomb: 4, gold: 3, drain: 1.3, note: 'Time speeds up — grab golden stars.' }),
+    R({ bomb: 5, clock: 4, timeScale: 0.8, note: 'Clock hunt in the rain.' }),
+    R({ bomb: 5, freeze: 3, orderBonus: 4, drain: 1.4, note: 'Bubbles, bombs and freezes.' }),
+    R({ bomb: 7, clock: 5, timeScale: 0.7, drain: 1.3, note: 'Big clock hunt — little time, lots of bombs.' }),
+    R({ bomb: 8, clock: 4, freeze: 3, gold: 3, drain: 1.6, timeScale: 0.85, note: 'Final level: everything at once!' }),
+  ],
+}
+
 for (const b of Object.keys(TRACKS) as Basket[]) {
   TRACKS[b].forEach((lv, i) => {
+    lv.rules = RULES[b][i] ?? {}
     const [twist, place] = EXTRAS[b][i] ?? ['none', P('#fbfbfd', '#e3e4ea', '#cfd2dc')]
     lv.twist = twist
     lv.place = place
-    lv.time = levelTime(lv, i)
+    lv.time = Math.max(20, Math.round((levelTime(lv, i) * (lv.rules.timeScale ?? 1)) / 5) * 5)
   })
 }
 

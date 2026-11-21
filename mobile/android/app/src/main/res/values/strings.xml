@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Squishy Jiggly Pals</string>
+    <string name="title_activity_main">Squishy Jiggly Pals</string>
+    <string name="package_name">com.squishyjigglypals.app</string>
+    <string name="custom_url_scheme">com.squishyjigglypals.app</string>
+</resources>

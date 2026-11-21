@@ -1,2 +1,15 @@
 node_modules
 dist
+.next
+out
+*.tsbuildinfo
+.env
+.env.local
+dashboard/.env.local
+game/.env.local
+# Android build output (the project itself is committed)
+mobile/android/app/build
+mobile/android/.gradle
+mobile/android/build
+mobile/android/local.properties
+mobile/www

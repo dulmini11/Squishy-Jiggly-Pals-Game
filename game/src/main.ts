@@ -2,10 +2,11 @@ import { CATEGORY_COLORS, designById, designsFor, resample, type Category, type 
 import { sfx } from './sound.ts'
 import { fx } from './fx.ts'
 import { createQuest, type RoundResult } from './quest.ts'
-import { BASKETS, TRACKS, TWIST_INFO, type Place, type Twist, loadBasket, loadStars, saveBasket, saveStars, type Basket } from './levels.ts'
+import { BASKETS, TRACKS, TWIST_INFO, taskText, type Level, type Place, type Twist, loadBasket, loadStars, saveBasket, saveStars, type Basket } from './levels.ts'
 import { haptics } from './haptics.ts'
 import { camera } from './camera.ts'
 import { decorateToolbar } from './icons.ts'
+import { telemetry } from './telemetry.ts'
 import { renderStats } from './dashboard.ts'
 import { bgById, hatById, knifeById } from './catalog.ts'
 import { ci, decorateCute, jellyIcon } from './cute.ts'
@@ -60,6 +61,7 @@ type Body = {
   blink: number // frames until next blink
   blinkT: number // frames left in current blink
   surprise: number // frames of surprised face
+  born: number // when it appeared (bomb fuses count from here)
 }
 
 type Hit = { edge: number; t: number }
@@ -143,6 +145,7 @@ function makeBody(design: Design, rest: Vec[], x: number, y: number, angle: numb
     blink: 60 + Math.random() * 240,
     blinkT: 0,
     surprise: 0,
+    born: performance.now(),
   }
 }
 
@@ -520,6 +523,11 @@ type PRec = { x: number; y: number; vx: number; vy: number; rx: number; ry: numb
 
 function slice(b: Body, h1: Hit, h2: Hit, dirX: number, dirY: number): boolean {
   if (h1.edge === h2.edge) return false
+  // special jellies don't split: they explode, add time, freeze or pay out
+  if (b.design.special) {
+    triggerSpecial(b)
+    return true
+  }
   const [a, c] = h1.edge < h2.edge ? [h1, h2] : [h2, h1]
   const n = b.n
   const rec = (i: number): PRec => ({ x: b.px[i], y: b.py[i], vx: b.vx[i], vy: b.vy[i], rx: b.rx[i], ry: b.ry[i] })
@@ -604,6 +612,7 @@ function slice(b: Body, h1: Hit, h2: Hit, dirX: number, dirY: number): boolean {
   const wanted = quest.active && quest.wants(b.design.id)
   quest.event(cutTool === 'chop' ? 'chop' : 'slice', b)
   recordSlice(b.design.id, cutTool)
+  telemetry.cut(b.design.id, cutTool)
   gainXp(1)
   if (mode === 'knife' && pointer.down) {
     strokeCuts++
@@ -644,9 +653,105 @@ function multiCut(total: number, good: number) {
 }
 
 // ---------------------------------------------------------------------------
+// Special jellies: 💣 bomb · ⏱️ clock · ❄️ freeze · ⭐ gold
+// ---------------------------------------------------------------------------
+const BOMB_FUSE_MS = 9000
+
+function removeBody(b: Body) {
+  const i = bodies.indexOf(b)
+  if (i >= 0) bodies.splice(i, 1)
+  if (grab?.body === b) grab = null
+}
+
+/** The player cut, chopped or ate a special jelly (or a bomb's fuse ran out). */
+function triggerSpecial(b: Body, byPlayer = true) {
+  const kind = b.design.special
+  removeBody(b)
+  if (kind === 'bomb') {
+    explode(b, byPlayer)
+    return
+  }
+  fx.juice(b.cx, b.cy, b.design.juice, 28, Math.max(0.7, b.radius / 90))
+  if (kind === 'clock') {
+    quest.addTime(5)
+    sfx.success()
+  } else if (kind === 'freeze') {
+    quest.freeze(4)
+    sfx.freeze()
+  } else if (kind === 'gold') {
+    quest.bonus(50)
+    if (quest.active) addCoins(3)
+    sfx.win()
+  }
+}
+
+/** Boom: everything nearby is thrown away; if the player set it off, they lose time and the combo. */
+function explode(b: Body, byPlayer: boolean) {
+  const s = Math.max(0.8, b.radius / 80)
+  fx.juice(b.cx, b.cy, '#ff8a3d', 34, 1.3 * s)
+  fx.juice(b.cx, b.cy, '#3a3f5c', 26, 1.1 * s)
+  fx.juice(b.cx, b.cy, '#ffd35c', 18, 1 * s)
+  const reach = 300 * Math.max(0.7, U)
+  for (const o of bodies) {
+    const dx = o.cx - b.cx
+    const dy = o.cy - b.cy
+    const d = Math.hypot(dx, dy) || 1
+    if (d > reach) continue
+    const f = (1 - d / reach) * 18 * U
+    for (let i = 0; i < o.n; i++) {
+      o.vx[i] += (dx / d) * f + (Math.random() - 0.5) * 3
+      o.vy[i] += (dy / d) * f - 2 + (Math.random() - 0.5) * 3
+    }
+    o.surprise = 70
+  }
+  document.body.classList.remove('boom')
+  void document.body.offsetWidth
+  document.body.classList.add('boom')
+  camera.slowmo(0.4, 300)
+  sfx.boom()
+  if (byPlayer) quest.bombHit(5)
+}
+
+/** Bombs left alone blow up by themselves when their fuse runs out. */
+function tickBombs(now: number) {
+  for (const b of bodies.slice()) {
+    if (b.design.special === 'bomb' && now - b.born > BOMB_FUSE_MS) triggerSpecial(b, false)
+  }
+}
+
+/** Fuse spark on bombs, and a red warning glow in their last 2.5 seconds. */
+function drawBombFx(b: Body, now: number) {
+  const left = BOMB_FUSE_MS - (now - b.born)
+  ctx.save()
+  artTransform(b)
+  const flick = 0.75 + Math.random() * 0.5
+  const g = ctx.createRadialGradient(34, -152, 0, 34, -152, 26 * flick)
+  g.addColorStop(0, 'rgba(255,255,220,1)')
+  g.addColorStop(0.35, 'rgba(255,200,60,0.95)')
+  g.addColorStop(1, 'rgba(255,90,30,0)')
+  ctx.fillStyle = g
+  ctx.beginPath()
+  ctx.arc(34, -152, 26 * flick, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.restore()
+  if (left < 2500) {
+    const pulse = 0.5 + 0.5 * Math.sin(now / (left < 1000 ? 50 : 110))
+    ctx.save()
+    tracePath(b)
+    ctx.fillStyle = `rgba(255,60,60,${0.18 + 0.32 * pulse})`
+    ctx.fill()
+    ctx.restore()
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Eating
 // ---------------------------------------------------------------------------
 function eat(b: Body) {
+  if (b.design.special) {
+    triggerSpecial(b)
+    return
+  }
   const idx = bodies.indexOf(b)
   if (idx < 0) return
   bodies.splice(idx, 1)
@@ -658,6 +763,7 @@ function eat(b: Body) {
   sfx.eat()
   quest.event('eat', b)
   bump('eaten')
+  telemetry.eat()
   gainXp(2)
 }
 
@@ -773,7 +879,8 @@ function drawBody(b: Body, night: boolean) {
   ctx.restore()
 
   if (showFaces && b.whole) drawFace(b)
-  if (b.whole) drawHat(b)
+  if (b.whole && !b.design.special) drawHat(b)
+  if (b.design.special === 'bomb') drawBombFx(b, performance.now())
   if (showTags) drawTag(b)
 }
 
@@ -964,6 +1071,7 @@ function frame(now: number) {
   }
   if (steps === 3) acc = 0
   if (screen === 'home') homeHop(now)
+  if (screen === 'game') tickBombs(now)
 
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0)
   ctx.clearRect(0, 0, W, H)
@@ -1356,12 +1464,44 @@ function startLevel(i: number) {
   twist = lv.twist ?? 'none'
   applyBackground(lv.place, twist === 'night')
   resetScene(lv.pool)
-  quest.start(lv, i)
   // meeting a new jelly on the map unlocks it
   for (const id of new Set(lv.pool)) if (unlockJelly(id)) toast(`${jellyIcon(id, 28)} New friend: <b>${designById(id).name}</b>!`, 'green')
-  const tw = TWIST_INFO[twist]
-  if (tw.icon) setTimeout(() => toast(`${tw.icon} <b>${tw.label}!</b> ${tw.tip}`, 'blue', 3600), 400)
   refreshBasket()
+  showLevelCard(lv, i)
+}
+
+/** The start card: what this level asks for and what's special about it. The timer starts on "Start". */
+const SPECIAL_TIPS: Record<string, string> = {
+  bomb: "<b>Bomb</b> — don't cut or eat it! (−5s)",
+  clock: '<b>Clock</b> — cut it for +5s',
+  freeze: '<b>Freeze</b> — cut it to stop the timer',
+  gold: '<b>Gold star</b> — bonus points & coins',
+}
+function showLevelCard(lv: Level, i: number) {
+  const r = lv.rules ?? {}
+  const tw = TWIST_INFO[lv.twist ?? 'none']
+  const specials = (['bomb', 'clock', 'freeze', 'gold'] as const).filter((k) => (r[k] ?? 0) > 0)
+  const timer: string[] = []
+  if (r.timeScale && r.timeScale < 1) timer.push('short time')
+  if (r.orderBonus) timer.push(`+${r.orderBonus}s per order`)
+  if (r.drain && r.drain > 1) timer.push('speeds up near the end')
+  const lines = [
+    `<span class="card-time">${ci('clock', 18)} <b>${lv.time}s</b>${timer.length ? ` · ${timer.join(' · ')}` : ''}</span>`,
+    `<ol class="card-missions">${lv.tasks.map((t) => `<li>${jellyIcon(t.ids[0], 22)}<span>${taskText(t)}</span></li>`).join('')}</ol>`,
+    ...(tw.icon ? [`<span class="card-twist">${tw.icon} <b>${tw.label}</b> — ${tw.tip}</span>`] : []),
+    ...(specials.length ? [`<div class="card-specials">${specials.map((k) => `<span>${jellyIcon(k, 30)}${SPECIAL_TIPS[k]}</span>`).join('')}</div>`] : []),
+    ...(r.note ? [`<span class="card-note">${r.note}</span>`] : []),
+  ]
+  showModal({
+    emoji: jellyIcon(lv.tasks[0]?.ids[0] ?? lv.pool[0], 64),
+    title: `${i + 1}. ${lv.name}`,
+    lines,
+    buttons: [
+      { label: 'Start ▶', primary: true, onClick: () => quest.start(lv, i) },
+      { label: 'Map', onClick: () => showScreen('levels') },
+    ],
+  })
+  document.getElementById('modal')!.classList.add('level-card')
 }
 
 /** The landing page jellies hop around now and then so the scene feels alive. */
@@ -1505,6 +1645,7 @@ function showModal(o: { emoji: string; emojiClass?: string; title: string; big?:
 
 function hideModal() {
   document.getElementById('modal')!.classList.add('hidden')
+  document.getElementById('modal')!.classList.remove('level-card')
   document.body.classList.remove('modal-open')
 }
 
@@ -1516,6 +1657,7 @@ function showResult(r: RoundResult) {
     const xp = Math.floor(r.score / 15)
     bump('rushGames')
     best('bestRush', r.score)
+    telemetry.rush(r.score)
     addCoins(coins)
     showModal({
       emoji: ci('rush', 64),
@@ -1531,6 +1673,7 @@ function showResult(r: RoundResult) {
     checkBadges()
     return
   }
+  telemetry.level({ world: basket, index: r.index, name: r.level.name, won: r.won, stars: r.stars, secondsLeft: r.timeLeft })
   if (r.won) {
     const before = loadStars(basket)[r.index] || 0
     const firstClear = before === 0
@@ -1730,6 +1873,7 @@ if (import.meta.env.DEV) {
     },
     save,
     finish: (won: boolean) => quest.end(won),
+    spawn: (id: string) => spawn(designById(id)),
   }
 }
 
@@ -1746,6 +1890,7 @@ window.addEventListener('resize', () => {
   if (screen === 'levels') renderMap(basket, startLevel)
   if (screen === 'dash') renderStats()
 })
+telemetry.session()
 resize()
 decorateToolbar()
 decorateCute()

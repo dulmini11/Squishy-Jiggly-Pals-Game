@@ -1,13 +1,14 @@
 // Round engine: runs either a Level (fixed list of orders, stars) or Rush (endless random orders).
 import { CATEGORY_COLORS, DESIGNS, designById, designsFor, type Category, type Design } from './art.ts'
-import { starsFor, taskText, type Level, type TaskKind, type TaskSpec } from './levels.ts'
+import { RUSH_RULES, starsFor, taskText, type Level, type LevelRules, type TaskKind, type TaskSpec } from './levels.ts'
+import type { SpecialKind } from './specials.ts'
 
 export type QBody = { design: Design; whole: boolean; k: number; cx: number; cy: number }
 export type QEvent = TaskKind
 
 export type RoundResult =
   | { mode: 'rush'; score: number; done: number; best: number; newBest: boolean }
-  | { mode: 'level'; level: Level; index: number; won: boolean; stars: number; score: number; done: number; total: number }
+  | { mode: 'level'; level: Level; index: number; won: boolean; stars: number; score: number; done: number; total: number; timeLeft: number }
 
 export type QuestApi = {
   bodies: () => QBody[]
@@ -25,7 +26,7 @@ const RUSH_TIME = 60
 /** Points lost for cutting a jelly that the current order doesn't need. */
 const MISTAKE_POINTS = 15
 const BEST_KEY = 'jelly-orchard-best'
-const CAT_LABEL: Record<Category, string> = { fruit: 'Fruit', bloom: 'Bloom', citrus: 'Citrus', melon: 'Melon', berry: 'Berry', veggie: 'Veggie' }
+const CAT_LABEL: Record<Category, string> = { fruit: 'Fruit', bloom: 'Bloom', citrus: 'Citrus', melon: 'Melon', berry: 'Berry', veggie: 'Veggie', special: 'Special' }
 
 const $ = (id: string) => document.getElementById(id)!
 const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)]
@@ -126,10 +127,37 @@ export function createQuest(api: QuestApi) {
     }
   }
 
+  // ---------- time power-ups and penalties ----------
+  let frozenFor = 0 // seconds the timer stays stopped
+  let specialClock = 0
+  const SPECIAL_CAP: Record<SpecialKind, number> = { bomb: 3, clock: 2, freeze: 1, gold: 1 }
+  const rules = (): LevelRules => level?.rules ?? RUSH_RULES
+
+  /** How far through the round we are (0..1): used to speed the timer up near the end. */
+  const progress = () => (level ? (total ? done / total : 0) : Math.min(1, clock / 90))
+
+  function showDelta(text: string, cls: string) {
+    const el = $('q-tdelta')
+    el.textContent = text
+    el.className = `q-tdelta ${cls}`
+    void el.offsetWidth
+    el.classList.add('show')
+  }
+
+  function addTime(sec: number) {
+    time = Math.max(0, Math.min(maxTime * 1.5, time + sec))
+    showDelta(`${sec > 0 ? '+' : '−'}${Math.abs(sec)}s`, sec > 0 ? 'up' : 'down')
+    hud.classList.remove('time-up', 'time-down')
+    void hud.offsetWidth
+    hud.classList.add(sec > 0 ? 'time-up' : 'time-down')
+    renderHud()
+  }
+
   function renderHud() {
     $('q-time').textContent = String(Math.ceil(time))
     $('q-score').textContent = String(score)
     $('q-bar').style.width = `${Math.min(100, (time / maxTime) * 100)}%`
+    hud.classList.toggle('frozen', frozenFor > 0)
     hud.classList.toggle('hurry', time <= 10)
     $('q-combo').textContent = combo > 1 ? `COMBO ×${combo}` : ''
   }
@@ -150,6 +178,9 @@ export function createQuest(api: QuestApi) {
     lastTick = 0
     lastEnsure = 0
     mistakes = 0
+    frozenFor = 0
+    specialClock = 0
+    hud.classList.remove('frozen', 'time-up', 'time-down')
     task = null
     $('q-level').textContent = level ? `${level.emoji} Lv ${index + 1} · ${level.name}` : '⚡ Rush'
     $('q-text').textContent = 'Get ready…'
@@ -179,7 +210,7 @@ export function createQuest(api: QuestApi) {
       const stars = won ? starsFor(lv, time) : 0
       if (won) api.sound.win()
       else api.sound.over()
-      api.finish({ mode: 'level', level: lv, index: levelIndex, won, stars, score, done, total })
+      api.finish({ mode: 'level', level: lv, index: levelIndex, won, stars, score, done, total, timeLeft: time })
       return
     }
     const newBest = score > best
@@ -234,13 +265,30 @@ export function createQuest(api: QuestApi) {
 
     update(dt: number) {
       if (!active) return
-      time -= dt
       clock += dt
+      if (frozenFor > 0) frozenFor = Math.max(0, frozenFor - dt)
+      else {
+        // some levels drain faster as you get closer to the end
+        const drain = 1 + ((rules().drain ?? 1) - 1) * progress()
+        time -= dt * drain
+      }
+      // special jellies appear at this level's own rate (per minute)
+      specialClock += dt
+      if (specialClock >= 1) {
+        specialClock -= 1
+        const r = rules()
+        for (const kind of ['bomb', 'clock', 'freeze', 'gold'] as SpecialKind[]) {
+          const perMin = r[kind] ?? 0
+          if (!perMin || Math.random() >= perMin / 60) continue
+          const onBoard = api.bodies().filter((b) => b.design.special === kind).length
+          if (onBoard < SPECIAL_CAP[kind]) api.spawn(designById(kind))
+        }
+      }
       if (time <= 5 && time > 0 && Math.ceil(time) !== lastTick) {
         lastTick = Math.ceil(time)
         api.sound.tick()
       }
-      if (api.bodies().filter((b) => b.whole).length < 5 && Math.random() < 0.02) api.spawn(pick(pool()))
+      if (api.bodies().filter((b) => b.whole && !b.design.special).length < 5 && Math.random() < 0.02) api.spawn(pick(pool()))
       if (task && clock - lastEnsure > 2.5) {
         lastEnsure = clock
         if (!hasTarget(task.spec)) api.spawn(designById(pick(task.spec.ids)))
@@ -285,13 +333,14 @@ export function createQuest(api: QuestApi) {
       lastDone = clock
       done++
       const pts = 100 * combo
-      if (!level) time = Math.min(99, time + 5)
+      const orderBonus = level ? (rules().orderBonus ?? 0) : 5
+      if (orderBonus) addTime(orderBonus)
       addScore(pts, b, combo > 1 ? `+${pts} · combo ×${combo}` : `+${pts}`)
       api.sound.success()
       api.onOrder?.(combo, b)
       task = null
       $('q-text').textContent = '✓ Order served!'
-      $('q-prog').textContent = level ? '' : '+5s'
+      $('q-prog').textContent = orderBonus ? `+${orderBonus}s` : ''
       if (level && queue.length === 0) {
         setTimeout(() => {
           if (active) finishRound(true)
@@ -302,6 +351,24 @@ export function createQuest(api: QuestApi) {
         if (active) nextTask()
       }, 600)
       return true
+    },
+    /** +seconds (clock jelly) or −seconds (bomb). */
+    addTime(sec: number) {
+      if (active) addTime(sec)
+    },
+    /** Stop the timer for a few seconds (freeze jelly). */
+    freeze(sec: number) {
+      if (!active) return
+      frozenFor = Math.max(frozenFor, sec)
+      showDelta(`❄ ${sec}s`, 'ice')
+      renderHud()
+    },
+    /** A bomb went off because of the player: lose time and the combo. */
+    bombHit(sec: number) {
+      if (!active) return
+      combo = 1
+      mistakes++
+      addTime(-sec)
     },
     /** Is this jelly what the current order wants (any tool)? */
     wants(id: string) {

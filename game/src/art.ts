@@ -1,9 +1,10 @@
 // Fruit / flower designs for Squishy Jiggly Pals.
 // Every design is drawn around (0,0) at a base radius of ~100 units.
 import { VEGGIES } from './veggies.ts'
+import { SPECIALS, type SpecialKind } from './specials.ts'
 
 export type Vec = { x: number; y: number }
-export type Category = 'fruit' | 'bloom' | 'citrus' | 'melon' | 'berry' | 'veggie'
+export type Category = 'fruit' | 'bloom' | 'citrus' | 'melon' | 'berry' | 'veggie' | 'special'
 
 export type Design = {
   id: string
@@ -23,6 +24,8 @@ export type Design = {
   juice: string
   /** Where the cute face sits (art space) and how big it is. Defaults to the shape's centre. */
   face?: { x: number; y: number; scale: number }
+  /** Special jellies (bomb, clock, freeze, gold) do something when cut instead of splitting. */
+  special?: SpecialKind
 }
 
 const TAU = Math.PI * 2
@@ -404,7 +407,7 @@ const blossom: Design = {
 
 export const FRUITS: Design[] = [kiwi, lemon, orange, lime, wedge, melonRound, strawberry, blueberry, tulip, blossom]
 export const DESIGNS: Design[] = [...FRUITS, ...VEGGIES]
-export const designById = (id: string) => DESIGNS.find((d) => d.id === id)!
+export const designById = (id: string) => DESIGNS.find((d) => d.id === id) ?? SPECIALS.find((d) => d.id === id)!
 
 export const CATEGORY_COLORS: Record<Category, string> = {
   fruit: '#4caf3a',
@@ -413,6 +416,7 @@ export const CATEGORY_COLORS: Record<Category, string> = {
   melon: '#8fd162',
   berry: '#e0182f',
   veggie: '#ff8a3d',
+  special: '#2c3150',
 }
 
 export function designsFor(cat: Category): Design[] {

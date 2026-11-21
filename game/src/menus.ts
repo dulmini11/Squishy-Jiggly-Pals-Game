@@ -137,6 +137,7 @@ export function renderMap(basket: Basket, onPlay: (index: number) => void) {
           <span class="name"><b>${i + 1}.</b> ${esc(lv.name)}</span>
           <span class="stars">${starRow}</span>
           ${open ? `<span class="time">⏱ ${lv.time}s</span>` : ''}
+          ${(['bomb', 'clock', 'freeze', 'gold'] as const).some((k) => (lv.rules?.[k] ?? 0) > 0) ? `<span class="feats">${(['bomb', 'clock', 'freeze', 'gold'] as const).filter((k) => (lv.rules?.[k] ?? 0) > 0).map((k) => jellyIcon(k, 20)).join('')}</span>` : ''}
         </button>`
     })
     .join('')
